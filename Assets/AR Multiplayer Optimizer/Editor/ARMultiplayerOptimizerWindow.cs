@@ -13,7 +13,7 @@ namespace AR.Multiplayer.Optimizer.Editor
     /// The tool scans the active scene for networking related behaviours and applies
     /// common optimisation settings such as send rates, batching and prediction toggles.
     /// </summary>
-    public class ArMultiplayerOptimizerWindow : EditorWindow
+    public class ARMultiplayerOptimizerWindow : EditorWindow
     {
         private const string EditorPrefsPrefix = "AR.Multiplayer.Optimizer.";
 
@@ -57,7 +57,7 @@ namespace AR.Multiplayer.Optimizer.Editor
         [MenuItem("AR Tools/AR Multiplayer Optimizer")] // Adds entry to the Unity Editor menu.
         public static void ShowWindow()
         {
-            var window = GetWindow<ArMultiplayerOptimizerWindow>(false, "AR Multiplayer Optimizer", true);
+            var window = GetWindow<ARMultiplayerOptimizerWindow>(false, "AR Multiplayer Optimizer", true);
             window.minSize = new Vector2(420f, 480f);
             window.Focus();
         }
