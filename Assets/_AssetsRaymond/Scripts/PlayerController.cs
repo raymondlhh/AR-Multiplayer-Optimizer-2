@@ -10,6 +10,9 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float rotationSpeed = 100f;
     
+    [Header("Joystick Controls")]
+    [SerializeField] private Joystick movementJoystick;
+    
     [Header("Player Info")]
     [SerializeField] private string playerName = "Player";
     [SerializeField] private Color playerColor = Color.white;
@@ -29,12 +32,15 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             SetPlayerColor();
             
             // Add camera follow for local player
-            SetupCamera();
+            //SetupCamera();
+            
+            // Auto-find joystick if not assigned
+            AutoFindJoystick();
         }
         else
         {
             // Set up remote player
-            playerName = "Player " + photonView.owner.ActorNumber;
+            playerName = "Player " + photonView.Owner.ActorNumber;
             SetPlayerColor();
         }
         
@@ -58,14 +64,26 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     
     void HandleInput()
     {
-        // Movement input
-        float horizontal = Input.GetAxis("Horizontal");
-        float vertical = Input.GetAxis("Vertical");
+        // Movement input from joystick
+        if (movementJoystick != null)
+        {
+            float horizontal = movementJoystick.Horizontal;
+            float vertical = movementJoystick.Vertical;
+            
+            Vector3 movement = new Vector3(horizontal, 0, vertical) * moveSpeed * Time.deltaTime;
+            transform.Translate(movement, Space.World);
+        }
+        else
+        {
+            // Fallback to keyboard input if joystick is not assigned
+            float horizontal = Input.GetAxis("Horizontal");
+            float vertical = Input.GetAxis("Vertical");
+            
+            Vector3 movement = new Vector3(horizontal, 0, vertical) * moveSpeed * Time.deltaTime;
+            transform.Translate(movement, Space.World);
+        }
         
-        Vector3 movement = new Vector3(horizontal, 0, vertical) * moveSpeed * Time.deltaTime;
-        transform.Translate(movement, Space.World);
-        
-        // Rotation input
+        // Rotation input (keyboard only)
         if (Input.GetKey(KeyCode.Q))
         {
             transform.Rotate(0, -rotationSpeed * Time.deltaTime, 0);
@@ -75,7 +93,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             transform.Rotate(0, rotationSpeed * Time.deltaTime, 0);
         }
         
-        // Jump input
+        // Jump input (keyboard only)
         if (Input.GetKeyDown(KeyCode.Space))
         {
             Jump();
@@ -98,7 +116,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         Renderer[] renderers = GetComponentsInChildren<Renderer>();
         Color[] colors = { Color.red, Color.blue, Color.green, Color.yellow };
         
-        int playerIndex = (photonView.owner.ActorNumber - 1) % colors.Length;
+        int playerIndex = (photonView.Owner.ActorNumber - 1) % colors.Length;
         playerColor = colors[playerIndex];
         
         foreach (Renderer renderer in renderers)
@@ -117,6 +135,25 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             mainCamera.transform.SetParent(transform);
             mainCamera.transform.localPosition = new Vector3(0, 5, -10);
             mainCamera.transform.LookAt(transform);
+        }
+    }
+    
+    void AutoFindJoystick()
+    {
+        // Auto-find joystick if not manually assigned
+        if (movementJoystick == null)
+        {
+            // Try to find any Joystick component in the scene
+            Joystick foundJoystick = FindObjectOfType<Joystick>();
+            if (foundJoystick != null)
+            {
+                movementJoystick = foundJoystick;
+                Debug.Log("Auto-found Joystick: " + foundJoystick.name + " (" + foundJoystick.GetType().Name + ")");
+            }
+            else
+            {
+                Debug.LogWarning("No joystick found in scene. Player will use keyboard controls only.");
+            }
         }
     }
     

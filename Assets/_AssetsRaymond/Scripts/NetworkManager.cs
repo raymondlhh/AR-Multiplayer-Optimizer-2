@@ -8,59 +8,46 @@ using Photon.Realtime;
 public class NetworkManager : MonoBehaviourPunCallbacks
 {
     [Header("UI References")]
-    [SerializeField] private GameObject controlPanel;
-    [SerializeField] private Text feedbackText;
-    [SerializeField] private Button connectButton;
+    [SerializeField] private Text userText;
+    [SerializeField] private Text roomText;
     
     [Header("Room Settings")]
     [SerializeField] private byte maxPlayersPerRoom = 4;
     [SerializeField] private string roomName = "AR_Multiplayer_Room";
     
-    [Header("Player Settings")]
-    [SerializeField] private GameObject playerPrefab;
-    [SerializeField] private Transform[] spawnPoints;
     
     private bool isConnecting = false;
     private string gameVersion = "1.0";
+    private string randomRoomId;
     
     void Awake()
     {
         // Enable automatic scene synchronization
         PhotonNetwork.AutomaticallySyncScene = true;
         
-        // Set up UI
-        if (controlPanel != null)
-            controlPanel.SetActive(true);
-        if (feedbackText != null)
-            feedbackText.text = "Ready to connect";
-        if (connectButton != null)
-            connectButton.onClick.AddListener(Connect);
+        // Generate random room ID
+        GenerateRandomRoomId();
     }
     
     void Start()
     {
+        // Update UI immediately with random room ID
+        UpdateUIWithRandomId();
+        
         // Auto-connect when the scene starts
         Connect();
     }
     
     public void Connect()
     {
-        if (feedbackText != null)
-            feedbackText.text = "";
-            
         isConnecting = true;
-        
-        if (controlPanel != null)
-            controlPanel.SetActive(false);
             
         if (PhotonNetwork.IsConnected)
         {
-            LogFeedback("Joining Room...");
             PhotonNetwork.JoinRoom(roomName);
         }
         else
         {
-            LogFeedback("Connecting...");
             PhotonNetwork.ConnectUsingSettings();
             PhotonNetwork.GameVersion = gameVersion;
         }
@@ -68,10 +55,6 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     
     void LogFeedback(string message)
     {
-        if (feedbackText != null)
-        {
-            feedbackText.text += System.Environment.NewLine + message;
-        }
         Debug.Log(message);
     }
     
@@ -81,14 +64,12 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     {
         if (isConnecting)
         {
-            LogFeedback("Connected to Master Server. Joining room...");
             PhotonNetwork.JoinRoom(roomName);
         }
     }
     
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
-        LogFeedback("Room not found. Creating new room...");
         RoomOptions roomOptions = new RoomOptions();
         roomOptions.MaxPlayers = maxPlayersPerRoom;
         roomOptions.IsOpen = true;
@@ -99,68 +80,125 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     
     public override void OnCreatedRoom()
     {
-        LogFeedback("Room created successfully!");
+        // Room created successfully
     }
     
     public override void OnJoinedRoom()
     {
-        LogFeedback("Joined room with " + PhotonNetwork.CurrentRoom.PlayerCount + " player(s)");
-        
-        // Spawn player
-        SpawnPlayer();
+        // Update UI for current player
+        UpdateUIForCurrentPlayer();
     }
     
     public override void OnDisconnected(DisconnectCause cause)
     {
-        LogFeedback("Disconnected: " + cause);
         isConnecting = false;
-        
-        if (controlPanel != null)
-            controlPanel.SetActive(true);
     }
     
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
-        LogFeedback("Player " + newPlayer.NickName + " joined the room");
+        // Player joined the room
     }
     
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
-        LogFeedback("Player " + otherPlayer.NickName + " left the room");
+        // Player left the room
     }
     
     #endregion
     
-    private void SpawnPlayer()
-    {
-        if (playerPrefab != null)
-        {
-            Vector3 spawnPosition = GetSpawnPosition();
-            PhotonNetwork.Instantiate(playerPrefab.name, spawnPosition, Quaternion.identity);
-        }
-        else
-        {
-            Debug.LogError("Player prefab is not assigned!");
-        }
-    }
-    
-    private Vector3 GetSpawnPosition()
-    {
-        if (spawnPoints != null && spawnPoints.Length > 0)
-        {
-            int spawnIndex = PhotonNetwork.CurrentRoom.PlayerCount - 1;
-            if (spawnIndex < spawnPoints.Length)
-            {
-                return spawnPoints[spawnIndex].position;
-            }
-        }
-        
-        // Default spawn position
-        return new Vector3(0, 0, 0);
-    }
-    
     public void LeaveRoom()
     {
         PhotonNetwork.LeaveRoom();
+    }
+    
+    private void GenerateRandomRoomId()
+    {
+        // Generate a random 6-character alphanumeric ID
+        string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        System.Random random = new System.Random();
+        randomRoomId = "";
+        
+        for (int i = 0; i < 6; i++)
+        {
+            randomRoomId += chars[random.Next(chars.Length)];
+        }
+        
+        Debug.Log("Generated random room ID: " + randomRoomId);
+    }
+    
+    // Public method to get the current random room ID
+    public string GetRandomRoomId()
+    {
+        return randomRoomId;
+    }
+    
+    // Public method to generate a new random room ID
+    public void GenerateNewRandomRoomId()
+    {
+        GenerateRandomRoomId();
+        Debug.Log("New random room ID generated: " + randomRoomId);
+    }
+    
+    // Public method to manually update UI (for testing)
+    public void UpdateUINow()
+    {
+        Debug.Log("=== MANUAL UI UPDATE ===");
+        Debug.Log("Random Room ID: " + randomRoomId);
+        Debug.Log("UserText assigned: " + (userText != null ? "YES" : "NO"));
+        Debug.Log("RoomText assigned: " + (roomText != null ? "YES" : "NO"));
+        
+        UpdateUIWithRandomId();
+        
+        Debug.Log("=== END UI UPDATE ===");
+    }
+    
+    private void UpdateUIWithRandomId()
+    {
+        Debug.Log("Updating UI with random room ID: " + randomRoomId);
+        
+        // Update RoomText with random ID immediately
+        if (roomText != null)
+        {
+            roomText.text = "Room " + randomRoomId;
+            roomText.gameObject.SetActive(true);
+            Debug.Log("RoomText updated to: " + roomText.text);
+        }
+        else
+        {
+            Debug.LogWarning("RoomText is null! Please assign it in the Inspector.");
+        }
+        
+        // Update UserText (will be updated when player joins room)
+        if (userText != null)
+        {
+            userText.text = "User 0";
+            userText.gameObject.SetActive(true);
+            Debug.Log("UserText updated to: " + userText.text);
+        }
+        else
+        {
+            Debug.LogWarning("UserText is null! Please assign it in the Inspector.");
+        }
+    }
+    
+    private void UpdateUIForCurrentPlayer()
+    {
+        int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
+        
+        // Update UserText
+        if (userText != null)
+        {
+            userText.text = "User " + playerCount;
+            userText.gameObject.SetActive(true);
+            Debug.Log("UserText updated to: " + userText.text);
+        }
+        
+        // Update RoomText with random ID
+        if (roomText != null)
+        {
+            roomText.text = "Room " + randomRoomId;
+            roomText.gameObject.SetActive(true);
+            Debug.Log("RoomText updated to: " + roomText.text);
+        }
     }
 }

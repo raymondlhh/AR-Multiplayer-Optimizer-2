@@ -65,7 +65,7 @@ public class PlayerPrefabSetup : MonoBehaviour
         
         // Set up PhotonView
         photonView.ObservedComponents.Add(playerPrefab.GetComponent<PlayerController>());
-        photonView.synchronization = ViewSynchronization.UnreliableOnChange;
+        photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
         
         Debug.Log("Basic player prefab created! Remember to save it as a prefab in the Resources folder.");
     }
