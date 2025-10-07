@@ -25,7 +25,7 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         // Enable automatic scene synchronization
         PhotonNetwork.AutomaticallySyncScene = true;
         
-        // Generate random room ID
+        // Generate random room ID for display
         GenerateRandomRoomId();
     }
     
@@ -44,10 +44,12 @@ public class NetworkManager : MonoBehaviourPunCallbacks
             
         if (PhotonNetwork.IsConnected)
         {
+            Debug.Log("Attempting to join room: " + roomName);
             PhotonNetwork.JoinRoom(roomName);
         }
         else
         {
+            Debug.Log("Connecting to Photon with room: " + roomName);
             PhotonNetwork.ConnectUsingSettings();
             PhotonNetwork.GameVersion = gameVersion;
         }
@@ -64,12 +66,14 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     {
         if (isConnecting)
         {
+            Debug.Log("Connected to master, joining room: " + roomName);
             PhotonNetwork.JoinRoom(roomName);
         }
     }
     
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
+        Debug.Log("Room join failed, creating new room: " + roomName);
         RoomOptions roomOptions = new RoomOptions();
         roomOptions.MaxPlayers = maxPlayersPerRoom;
         roomOptions.IsOpen = true;
@@ -80,11 +84,12 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     
     public override void OnCreatedRoom()
     {
-        // Room created successfully
+        Debug.Log("Room created successfully: " + roomName);
     }
     
     public override void OnJoinedRoom()
     {
+        Debug.Log("Successfully joined room: " + PhotonNetwork.CurrentRoom.Name);
         // Update UI for current player
         UpdateUIForCurrentPlayer();
     }
@@ -96,12 +101,16 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
-        // Player joined the room
+        Debug.Log("Player entered room: " + newPlayer.NickName + " (Total players: " + PhotonNetwork.CurrentRoom.PlayerCount + ")");
+        // Update UI when new player joins
+        UpdateUIForCurrentPlayer();
     }
     
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
-        // Player left the room
+        Debug.Log("Player left room: " + otherPlayer.NickName + " (Total players: " + PhotonNetwork.CurrentRoom.PlayerCount + ")");
+        // Update UI when player leaves
+        UpdateUIForCurrentPlayer();
     }
     
     #endregion
@@ -130,6 +139,12 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     public string GetRandomRoomId()
     {
         return randomRoomId;
+    }
+    
+    // Public method to get the room name
+    public string GetRoomName()
+    {
+        return roomName;
     }
     
     // Public method to generate a new random room ID
