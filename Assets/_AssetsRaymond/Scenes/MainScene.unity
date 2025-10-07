@@ -1704,14 +1704,14 @@ MonoBehaviour:
   PreviewVisible: 1
   RuntimeOcclusion: 0
   RuntimeCollider: 0
-  mTrackableName: AR_Mascot
+  mTrackableName: ARMascot
   mInitializedInEditor: 1
   mDataSetPath: Vuforia/DMT412.xml
   mAspectRatio: 1.5
-  mImageTargetType: 3
-  mWidth: 0.13333334
-  mHeight: 0.20000002
-  mRuntimeTexture: {fileID: 2800000, guid: 081aa5417a82b1c469c403f8079a74a7, type: 3}
+  mImageTargetType: 0
+  mWidth: 1
+  mHeight: 1.5
+  mRuntimeTexture: {fileID: 0}
   mMotionHint: 1
   mTrackingOptimization: 0
   mTrackingOptimizationNeedsUpgrade: 0
@@ -1746,7 +1746,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mObserverBehaviour: {fileID: 2038150745}
   mHiddenRoot: {fileID: 0}
-  mTargetName: AR_Mascot
+  mTargetName: ARMascot
   mDatasetName: Vuforia/DMT412.xml
   mCastedBehaviour: {fileID: 2038150745}
   mMeshFilter: {fileID: 0}
