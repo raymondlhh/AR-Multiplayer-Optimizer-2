@@ -25,13 +25,13 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         // Enable automatic scene synchronization
         PhotonNetwork.AutomaticallySyncScene = true;
         
-        // Generate random room ID for display
-        GenerateRandomRoomId();
+        // Don't generate random ID here - wait until we join a room
+        // This ensures all users see the same ID
     }
     
     void Start()
     {
-        // Update UI immediately with random room ID
+        // Set initial UI state
         UpdateUIWithRandomId();
         
         // Auto-connect when the scene starts
@@ -90,6 +90,20 @@ public class NetworkManager : MonoBehaviourPunCallbacks
     public override void OnJoinedRoom()
     {
         Debug.Log("Successfully joined room: " + PhotonNetwork.CurrentRoom.Name);
+        
+        // Check if room already has a random ID set
+        if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey("RoomID"))
+        {
+            // Use the existing room ID
+            randomRoomId = (string)PhotonNetwork.CurrentRoom.CustomProperties["RoomID"];
+            Debug.Log("Using existing room ID: " + randomRoomId);
+        }
+        else
+        {
+            // Set the room ID for this room (first player)
+            SetRoomID();
+        }
+        
         // Update UI for current player
         UpdateUIForCurrentPlayer();
     }
@@ -104,6 +118,17 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         Debug.Log("Player entered room: " + newPlayer.NickName + " (Total players: " + PhotonNetwork.CurrentRoom.PlayerCount + ")");
         // Update UI when new player joins
         UpdateUIForCurrentPlayer();
+    }
+    
+    public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)
+    {
+        // When room properties change, update the room ID if it was set
+        if (propertiesThatChanged.ContainsKey("RoomID"))
+        {
+            randomRoomId = (string)PhotonNetwork.CurrentRoom.CustomProperties["RoomID"];
+            Debug.Log("Room ID updated: " + randomRoomId);
+            UpdateUIForCurrentPlayer();
+        }
     }
     
     public override void OnPlayerLeftRoom(Player otherPlayer)
@@ -167,14 +192,34 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         Debug.Log("=== END UI UPDATE ===");
     }
     
+    private void SetRoomID()
+    {
+        // Generate a random room ID
+        GenerateRandomRoomId();
+        
+        // Set it as a room property so all players see the same ID
+        ExitGames.Client.Photon.Hashtable roomProps = new ExitGames.Client.Photon.Hashtable();
+        roomProps["RoomID"] = randomRoomId;
+        PhotonNetwork.CurrentRoom.SetCustomProperties(roomProps);
+        
+        Debug.Log("Set room ID: " + randomRoomId);
+    }
+    
     private void UpdateUIWithRandomId()
     {
         Debug.Log("Updating UI with random room ID: " + randomRoomId);
         
-        // Update RoomText with random ID immediately
+        // Update RoomText with random ID
         if (roomText != null)
         {
-            roomText.text = "Room " + randomRoomId;
+            if (string.IsNullOrEmpty(randomRoomId))
+            {
+                roomText.text = "Room Connecting...";
+            }
+            else
+            {
+                roomText.text = "Room " + randomRoomId;
+            }
             roomText.gameObject.SetActive(true);
             Debug.Log("RoomText updated to: " + roomText.text);
         }
@@ -186,7 +231,7 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         // Update UserText (will be updated when player joins room)
         if (userText != null)
         {
-            userText.text = "User 0";
+            userText.text = "Users: 0";
             userText.gameObject.SetActive(true);
             Debug.Log("UserText updated to: " + userText.text);
         }
@@ -203,7 +248,7 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         // Update UserText
         if (userText != null)
         {
-            userText.text = "User " + playerCount;
+            userText.text = "Users: " + playerCount;
             userText.gameObject.SetActive(true);
             Debug.Log("UserText updated to: " + userText.text);
         }

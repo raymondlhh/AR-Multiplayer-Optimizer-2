@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using Photon.Pun;
 
 public class SpawnPoint : MonoBehaviour
@@ -10,6 +11,10 @@ public class SpawnPoint : MonoBehaviour
     [SerializeField] private bool spawnOnEnable = true;
     [SerializeField] private bool spawnOnlyOnce = true;
     [SerializeField] private bool useExistingPlayerChild = true;
+    
+    [Header("UI Settings")]
+    [SerializeField] private Text playerSpawnedText;
+    [SerializeField] private float textDisplayDuration = 3f;
     
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
@@ -133,6 +138,9 @@ public class SpawnPoint : MonoBehaviour
                 existingPlayer.gameObject.SetActive(true);
                 hasSpawned = true;
                 
+                // Show "Player Spawned" text
+                ShowPlayerSpawnedText();
+                
                 if (showDebugLogs)
                     Debug.Log("Player successfully activated at " + gameObject.name);
             }
@@ -151,6 +159,9 @@ public class SpawnPoint : MonoBehaviour
                         spawnedPlayer.name = "Player"; // Ensure it's named "Player"
                         
                         hasSpawned = true;
+                        
+                        // Show "Player Spawned" text
+                        ShowPlayerSpawnedText();
                         
                         if (showDebugLogs)
                             Debug.Log("Player successfully spawned and parented to " + gameObject.name);
@@ -252,6 +263,59 @@ public class SpawnPoint : MonoBehaviour
         {
             if (showDebugLogs)
                 Debug.LogWarning("No existing player child found at " + gameObject.name);
+        }
+    }
+    
+    // Method to show "Player Spawned" text
+    private void ShowPlayerSpawnedText()
+    {
+        if (playerSpawnedText != null)
+        {
+            playerSpawnedText.text = "Player Spawned";
+            playerSpawnedText.gameObject.SetActive(true);
+            
+            if (showDebugLogs)
+                Debug.Log("Player Spawned text shown");
+            
+            // Start coroutine to hide text after duration
+            StartCoroutine(HidePlayerSpawnedTextAfterDelay());
+        }
+        else
+        {
+            if (showDebugLogs)
+                Debug.LogWarning("PlayerSpawnedText is not assigned!");
+        }
+    }
+    
+    // Coroutine to hide the text after a delay
+    private IEnumerator HidePlayerSpawnedTextAfterDelay()
+    {
+        yield return new WaitForSeconds(textDisplayDuration);
+        
+        if (playerSpawnedText != null)
+        {
+            playerSpawnedText.gameObject.SetActive(false);
+            
+            if (showDebugLogs)
+                Debug.Log("Player Spawned text hidden");
+        }
+    }
+    
+    // Public method to manually show the text
+    public void ShowPlayerSpawnedTextManually()
+    {
+        ShowPlayerSpawnedText();
+    }
+    
+    // Public method to hide the text immediately
+    public void HidePlayerSpawnedText()
+    {
+        if (playerSpawnedText != null)
+        {
+            playerSpawnedText.gameObject.SetActive(false);
+            
+            if (showDebugLogs)
+                Debug.Log("Player Spawned text hidden manually");
         }
     }
 }
