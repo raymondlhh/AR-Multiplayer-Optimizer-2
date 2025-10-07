@@ -9,6 +9,7 @@ public class SpawnPoint : MonoBehaviour
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private bool spawnOnEnable = true;
     [SerializeField] private bool spawnOnlyOnce = true;
+    [SerializeField] private bool useExistingPlayerChild = true;
     
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
@@ -121,20 +122,50 @@ public class SpawnPoint : MonoBehaviour
         
         try
         {
-            // Instantiate the player prefab
-            GameObject spawnedPlayer = PhotonNetwork.Instantiate(playerPrefab.name, transform.position, transform.rotation);
-            
-            if (spawnedPlayer != null)
+            // Check if player already exists as child
+            Transform existingPlayer = transform.Find("Player");
+            if (existingPlayer != null && useExistingPlayerChild)
             {
+                if (showDebugLogs)
+                    Debug.Log("Player already exists as child of " + gameObject.name + ", activating it");
+                
+                // Activate the existing player
+                existingPlayer.gameObject.SetActive(true);
                 hasSpawned = true;
                 
                 if (showDebugLogs)
-                    Debug.Log("Player successfully spawned at " + gameObject.name);
+                    Debug.Log("Player successfully activated at " + gameObject.name);
             }
             else
             {
-                if (showDebugLogs)
-                    Debug.LogError("Failed to spawn player - PhotonNetwork.Instantiate returned null");
+                // Check if we need to instantiate a new player
+                if (playerPrefab != null)
+                {
+                    // Instantiate the player prefab as a child of this SpawnPoint
+                    GameObject spawnedPlayer = PhotonNetwork.Instantiate(playerPrefab.name, transform.position, transform.rotation);
+                    
+                    if (spawnedPlayer != null)
+                    {
+                        // Make the spawned player a child of this SpawnPoint
+                        spawnedPlayer.transform.SetParent(transform);
+                        spawnedPlayer.name = "Player"; // Ensure it's named "Player"
+                        
+                        hasSpawned = true;
+                        
+                        if (showDebugLogs)
+                            Debug.Log("Player successfully spawned and parented to " + gameObject.name);
+                    }
+                    else
+                    {
+                        if (showDebugLogs)
+                            Debug.LogError("Failed to spawn player - PhotonNetwork.Instantiate returned null");
+                    }
+                }
+                else
+                {
+                    if (showDebugLogs)
+                        Debug.LogError("No player prefab assigned and no existing player child found!");
+                }
             }
         }
         catch (System.Exception e)
@@ -184,5 +215,43 @@ public class SpawnPoint : MonoBehaviour
         
         if (showDebugLogs)
             Debug.Log("SpawnPoint " + gameObject.name + " set as local player: " + isLocal);
+    }
+    
+    // Public method to activate existing player child
+    public void ActivateExistingPlayer()
+    {
+        Transform existingPlayer = transform.Find("Player");
+        if (existingPlayer != null)
+        {
+            existingPlayer.gameObject.SetActive(true);
+            hasSpawned = true;
+            
+            if (showDebugLogs)
+                Debug.Log("Existing player activated at " + gameObject.name);
+        }
+        else
+        {
+            if (showDebugLogs)
+                Debug.LogWarning("No existing player child found at " + gameObject.name);
+        }
+    }
+    
+    // Public method to deactivate existing player child
+    public void DeactivateExistingPlayer()
+    {
+        Transform existingPlayer = transform.Find("Player");
+        if (existingPlayer != null)
+        {
+            existingPlayer.gameObject.SetActive(false);
+            hasSpawned = false;
+            
+            if (showDebugLogs)
+                Debug.Log("Existing player deactivated at " + gameObject.name);
+        }
+        else
+        {
+            if (showDebugLogs)
+                Debug.LogWarning("No existing player child found at " + gameObject.name);
+        }
     }
 }
