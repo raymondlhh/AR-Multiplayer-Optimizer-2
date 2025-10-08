@@ -9,6 +9,7 @@ namespace AR.Multiplayer.Optimizer.Editor
     /// </summary>
     public class ARMultiplayerOptimizerWindow : EditorWindow
     {
+        private bool showSetupUtilities = true;
         private bool showObjectManager = false;
         private Vector2 scrollPosition;
         private List<GameObject> resourceObjects = new List<GameObject>();
@@ -34,13 +35,34 @@ namespace AR.Multiplayer.Optimizer.Editor
             EditorGUILayout.LabelField("Objects Com", EditorStyles.boldLabel);
             EditorGUILayout.Space();
 
+            showSetupUtilities = EditorGUILayout.Foldout(showSetupUtilities, "Setup Utilities", true);
+            if (showSetupUtilities)
+            {
+                DrawSetupUtilities();
+                EditorGUILayout.Space();
+            }
+
             // Object Manager Dropdown
             showObjectManager = EditorGUILayout.Foldout(showObjectManager, "Object Manager", true);
-            
+
             if (showObjectManager)
             {
                 DrawObjectManager();
             }
+        }
+
+        private void DrawSetupUtilities()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Shared Space Setup", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Creates the GameObjects required for the AR shared origin synchronisation system.", MessageType.Info);
+
+            if (GUILayout.Button("Create Shared Space Rig", GUILayout.Height(25)))
+            {
+                CreateSharedSpaceRig();
+            }
+
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawObjectManager()
@@ -51,10 +73,27 @@ namespace AR.Multiplayer.Optimizer.Editor
             // Refresh button
             if (GUILayout.Button("Refresh Resource Prefabs", GUILayout.Height(25)))
             {
+                ResourcePrefabAutoConfigurator.ApplyBinderToResources();
                 LoadResourceObjects();
             }
 
             EditorGUILayout.Space();
+
+            EditorGUILayout.HelpBox("All prefabs found under Assets/Resources will automatically receive the ARNetworkedObjectBinder component so networked objects stay aligned.", MessageType.Info);
+
+            if (GUILayout.Button("Force Auto Assign Binder", GUILayout.Height(22)))
+            {
+                int configured = ResourcePrefabAutoConfigurator.ApplyBinderToResources();
+                if (configured > 0)
+                {
+                    Debug.Log($"[AR Multiplayer Optimizer] Updated {configured} prefab(s) with ARNetworkedObjectBinder.");
+                }
+                else
+                {
+                    Debug.Log("[AR Multiplayer Optimizer] All Resources prefabs already include ARNetworkedObjectBinder.");
+                }
+                LoadResourceObjects();
+            }
 
             // Display resource objects grouped by tags
             if (resourceObjects.Count == 0)
@@ -135,6 +174,7 @@ namespace AR.Multiplayer.Optimizer.Editor
 
         private void LoadResourceObjects()
         {
+            ResourcePrefabAutoConfigurator.EnsurePrefabsConfigured();
             resourceObjects.Clear();
             prefabsByTag.Clear();
             tagFoldouts.Clear();
@@ -167,6 +207,29 @@ namespace AR.Multiplayer.Optimizer.Editor
                     prefabsByTag[tag].Add(prefab);
                 }
             }
+        }
+
+        private void CreateSharedSpaceRig()
+        {
+            GameObject rigRoot = new GameObject("AR Shared Space");
+            Undo.RegisterCreatedObjectUndo(rigRoot, "Create AR Shared Space Rig");
+
+            GameObject alignmentRoot = new GameObject("Alignment Root");
+            alignmentRoot.transform.SetParent(rigRoot.transform, false);
+
+            GameObject contentRoot = new GameObject("AR Content");
+            contentRoot.transform.SetParent(alignmentRoot.transform, false);
+
+            var manager = rigRoot.AddComponent<AR.Multiplayer.Optimizer.ARSharedSpaceManager>();
+
+            SerializedObject serializedManager = new SerializedObject(manager);
+            serializedManager.FindProperty("alignmentRoot").objectReferenceValue = alignmentRoot.transform;
+            serializedManager.FindProperty("contentRoot").objectReferenceValue = contentRoot.transform;
+            serializedManager.ApplyModifiedProperties();
+
+            Selection.activeGameObject = rigRoot;
+
+            Debug.Log("AR Shared Space rig created in the hierarchy.");
         }
     }
 }
