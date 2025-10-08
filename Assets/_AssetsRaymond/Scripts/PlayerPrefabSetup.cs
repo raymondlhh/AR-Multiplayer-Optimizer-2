@@ -17,8 +17,9 @@ public class PlayerPrefabSetup : MonoBehaviour
         "5. Add the PlayerController script\n" +
         "6. Add a simple visual representation (Cube, Capsule, etc.)\n" +
         "7. Set the PhotonView's Observed Components to include PlayerController\n" +
-        "8. Save as a prefab in Resources folder\n" +
-        "9. Assign the prefab to NetworkManager's Player Prefab field\n\n" +
+        "8. Add the ARNetworkedObjectBinder component to ensure AR alignment\n" +
+        "9. Save as a prefab in Resources folder\n" +
+        "10. Assign the prefab to NetworkManager's Player Prefab field\n\n" +
         "The prefab will be automatically spawned for each player when they join the room.";
     
     void Start()
