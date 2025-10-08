@@ -12,6 +12,8 @@ namespace AR.Multiplayer.Optimizer.Editor
         private bool showObjectManager = false;
         private Vector2 scrollPosition;
         private List<GameObject> resourceObjects = new List<GameObject>();
+        private Dictionary<string, List<GameObject>> prefabsByTag = new Dictionary<string, List<GameObject>>();
+        private Dictionary<string, bool> tagFoldouts = new Dictionary<string, bool>();
 
         [MenuItem("AR Optimizer/Objects Manager")]
         public static void ShowWindow()
@@ -47,65 +49,82 @@ namespace AR.Multiplayer.Optimizer.Editor
             EditorGUILayout.Space();
 
             // Refresh button
-            if (GUILayout.Button("Refresh Resource Objects", GUILayout.Height(25)))
+            if (GUILayout.Button("Refresh Resource Prefabs", GUILayout.Height(25)))
             {
                 LoadResourceObjects();
             }
 
             EditorGUILayout.Space();
 
-            // Display resource objects
+            // Display resource objects grouped by tags
             if (resourceObjects.Count == 0)
             {
-                EditorGUILayout.HelpBox("No objects found in Resources folder.", MessageType.Info);
-                }
-                else
+                EditorGUILayout.HelpBox("No prefabs found in Resources folder.", MessageType.Info);
+            }
+            else
             {
-                EditorGUILayout.LabelField($"Found {resourceObjects.Count} object(s) in Resources:", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField($"Found {resourceObjects.Count} prefab(s) in Resources:", EditorStyles.boldLabel);
                 EditorGUILayout.Space();
 
                 scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.Height(200));
 
-                foreach (var obj in resourceObjects)
+                // Display prefabs grouped by tags
+                foreach (var tagGroup in prefabsByTag)
                 {
-                    if (obj == null) continue;
-
-                    EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                    string tag = tagGroup.Key;
+                    List<GameObject> prefabs = tagGroup.Value;
                     
-                    // Object name and ping button
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(obj.name, EditorStyles.boldLabel);
-                    if (GUILayout.Button("Ping", GUILayout.Width(50)))
+                    // Tag foldout
+                    tagFoldouts[tag] = EditorGUILayout.Foldout(tagFoldouts[tag], $"{tag} ({prefabs.Count})", true);
+                    
+                    if (tagFoldouts[tag])
                     {
-                        EditorGUIUtility.PingObject(obj);
+                        EditorGUI.indentLevel++;
+                        
+                        foreach (var obj in prefabs)
+                        {
+                            if (obj == null) continue;
+
+                            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                            
+                            // Object name and ping button
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUILayout.LabelField(obj.name, EditorStyles.boldLabel);
+                            if (GUILayout.Button("Ping", GUILayout.Width(50)))
+                            {
+                                EditorGUIUtility.PingObject(obj);
+                            }
+                            EditorGUILayout.EndHorizontal();
+
+                            EditorGUILayout.Space();
+
+                            // Transform components
+                            var transform = obj.transform;
+                            
+                            // Position
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUILayout.LabelField("Position:", GUILayout.Width(60));
+                            EditorGUILayout.Vector3Field("", transform.position, GUILayout.ExpandWidth(true));
+                            EditorGUILayout.EndHorizontal();
+
+                            // Rotation
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUILayout.LabelField("Rotation:", GUILayout.Width(60));
+                            EditorGUILayout.Vector3Field("", transform.eulerAngles, GUILayout.ExpandWidth(true));
+                            EditorGUILayout.EndHorizontal();
+
+                            // Scale
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUILayout.LabelField("Scale:", GUILayout.Width(60));
+                            EditorGUILayout.Vector3Field("", transform.localScale, GUILayout.ExpandWidth(true));
+                            EditorGUILayout.EndHorizontal();
+
+                            EditorGUILayout.EndVertical();
+                            EditorGUILayout.Space();
+                        }
+                        
+                        EditorGUI.indentLevel--;
                     }
-                    EditorGUILayout.EndHorizontal();
-
-                    EditorGUILayout.Space();
-
-                    // Transform components
-                    var transform = obj.transform;
-                    
-                    // Position
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField("Position:", GUILayout.Width(60));
-                    EditorGUILayout.Vector3Field("", transform.position, GUILayout.ExpandWidth(true));
-                    EditorGUILayout.EndHorizontal();
-
-                    // Rotation
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField("Rotation:", GUILayout.Width(60));
-                    EditorGUILayout.Vector3Field("", transform.eulerAngles, GUILayout.ExpandWidth(true));
-                    EditorGUILayout.EndHorizontal();
-
-                    // Scale
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField("Scale:", GUILayout.Width(60));
-                    EditorGUILayout.Vector3Field("", transform.localScale, GUILayout.ExpandWidth(true));
-                    EditorGUILayout.EndHorizontal();
-
-                    EditorGUILayout.EndVertical();
-                    EditorGUILayout.Space();
                 }
 
                 EditorGUILayout.EndScrollView();
@@ -117,15 +136,35 @@ namespace AR.Multiplayer.Optimizer.Editor
         private void LoadResourceObjects()
         {
             resourceObjects.Clear();
+            prefabsByTag.Clear();
+            tagFoldouts.Clear();
             
-            // Load all GameObjects from Resources folder
-            var allObjects = Resources.LoadAll<GameObject>("");
+            // Find all prefab assets specifically in the Resources folder
+            string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Resources" });
             
-            foreach (var obj in allObjects)
+            foreach (string guid in guids)
             {
-                if (obj != null)
+                string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                
+                if (prefab != null)
                 {
-                    resourceObjects.Add(obj);
+                    resourceObjects.Add(prefab);
+                    
+                    // Get the tag of the prefab
+                    string tag = prefab.tag;
+                    if (string.IsNullOrEmpty(tag) || tag == "Untagged")
+                    {
+                        tag = "Untagged";
+                    }
+                    
+                    // Group by tag
+                    if (!prefabsByTag.ContainsKey(tag))
+                    {
+                        prefabsByTag[tag] = new List<GameObject>();
+                        tagFoldouts[tag] = true; // Default to expanded
+                    }
+                    prefabsByTag[tag].Add(prefab);
                 }
             }
         }
