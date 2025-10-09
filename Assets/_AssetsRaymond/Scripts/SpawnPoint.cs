@@ -8,7 +8,7 @@ public class SpawnPoint : MonoBehaviour
 {
     [Header("Spawn Settings")]
     [SerializeField] private GameObject playerPrefab;
-    [SerializeField] private bool spawnOnEnable = true;
+    [SerializeField] private bool spawnOnEnable = false; // Changed to false - use SpawnTrigger instead
     [SerializeField] private bool spawnOnlyOnce = true;
     [SerializeField] private bool useExistingPlayerChild = true;
     
@@ -26,6 +26,9 @@ public class SpawnPoint : MonoBehaviour
     {
         if (showDebugLogs)
             Debug.Log("SpawnPoint " + gameObject.name + " enabled");
+            
+        // Check if this is the local player's spawn point first
+        CheckIfLocalPlayerSpawnPoint();
             
         if (spawnOnEnable)
         {
@@ -317,5 +320,51 @@ public class SpawnPoint : MonoBehaviour
             if (showDebugLogs)
                 Debug.Log("Player Spawned text hidden manually");
         }
+    }
+    
+    // Public method to check if player exists inside (as child)
+    public bool HasPlayerInside()
+    {
+        // Check if player exists as child
+        Transform existingPlayer = transform.Find("Player");
+        
+        if (existingPlayer != null)
+        {
+            if (showDebugLogs)
+                Debug.Log("Player exists inside " + gameObject.name);
+            return true;
+        }
+        
+        // Also check for any child with PhotonView component (networked player)
+        PhotonView[] photonViews = GetComponentsInChildren<PhotonView>();
+        if (photonViews.Length > 0)
+        {
+            if (showDebugLogs)
+                Debug.Log("Networked player found inside " + gameObject.name);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Public method to spawn player when triggered by SpawnTrigger
+    public void SpawnPlayerFromTrigger()
+    {
+        if (showDebugLogs)
+            Debug.Log("SpawnPlayerFromTrigger called on " + gameObject.name);
+        
+        // Check if player already exists inside
+        if (HasPlayerInside())
+        {
+            if (showDebugLogs)
+                Debug.Log("Player already exists inside " + gameObject.name + ", skipping spawn");
+            return;
+        }
+        
+        // Check if this is the local player's spawn point
+        CheckIfLocalPlayerSpawnPoint();
+        
+        // Attempt to spawn
+        TrySpawnPlayer();
     }
 }
