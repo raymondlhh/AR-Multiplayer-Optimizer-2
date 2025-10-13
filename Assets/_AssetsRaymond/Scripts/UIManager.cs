@@ -7,165 +7,176 @@ using Photon.Realtime;
 
 public class UIManager : MonoBehaviourPunCallbacks
 {
-    [Header("UI Panels")]
-    [SerializeField] private GameObject mainMenuPanel;
-    [SerializeField] private GameObject gamePanel;
-    [SerializeField] private GameObject connectionPanel;
-    
-    [Header("UI Text Elements")]
-    [SerializeField] private Text connectionStatusText;
-    [SerializeField] private Text roomInfoText;
-    [SerializeField] private Text playerCountText;
-    [SerializeField] private Text feedbackText;
-    
-    [Header("UI Buttons")]
-    [SerializeField] private Button connectButton;
-    [SerializeField] private Button disconnectButton;
-    [SerializeField] private Button leaveRoomButton;
-    
-    private NetworkManager networkManager;
-    
-    void Start()
-    {
-        networkManager = FindObjectOfType<NetworkManager>();
-        
-        // Set up button listeners
-        if (connectButton != null)
-            connectButton.onClick.AddListener(OnConnectButtonClicked);
-        if (disconnectButton != null)
-            disconnectButton.onClick.AddListener(OnDisconnectButtonClicked);
-        if (leaveRoomButton != null)
-            leaveRoomButton.onClick.AddListener(OnLeaveRoomButtonClicked);
-        
-        // Initialize UI state
-        UpdateUI();
-    }
-    
-    void Update()
-    {
-        UpdateUI();
-    }
-    
-    void UpdateUI()
-    {
-        // Update connection status
-        if (connectionStatusText != null)
-        {
-            if (PhotonNetwork.IsConnected)
-            {
-                if (PhotonNetwork.InRoom)
-                {
-                    connectionStatusText.text = "Connected - In Room";
-                    connectionStatusText.color = Color.green;
-                }
-                else
-                {
-                    connectionStatusText.text = "Connected - In Lobby";
-                    connectionStatusText.color = Color.yellow;
-                }
-            }
-            else
-            {
-                connectionStatusText.text = "Disconnected";
-                connectionStatusText.color = Color.red;
-            }
-        }
-        
-        // Update room information
-        if (roomInfoText != null && PhotonNetwork.InRoom)
-        {
-            roomInfoText.text = "Room: " + PhotonNetwork.CurrentRoom.Name;
-        }
-        else if (roomInfoText != null)
-        {
-            roomInfoText.text = "Not in a room";
-        }
-        
-        // Update player count
-        if (playerCountText != null && PhotonNetwork.InRoom)
-        {
-            playerCountText.text = "Players: " + PhotonNetwork.CurrentRoom.PlayerCount + "/" + PhotonNetwork.CurrentRoom.MaxPlayers;
-        }
-        else if (playerCountText != null)
-        {
-            playerCountText.text = "Players: 0/0";
-        }
-        
-        // Show/hide appropriate panels
-        if (mainMenuPanel != null)
-            mainMenuPanel.SetActive(!PhotonNetwork.IsConnected);
-        
-        if (gamePanel != null)
-            gamePanel.SetActive(PhotonNetwork.IsConnected && PhotonNetwork.InRoom);
-        
-        if (connectionPanel != null)
-            connectionPanel.SetActive(PhotonNetwork.IsConnected && !PhotonNetwork.InRoom);
-    }
-    
-    public void OnConnectButtonClicked()
-    {
-        if (networkManager != null)
-        {
-            networkManager.Connect();
-        }
-    }
-    
-    public void OnDisconnectButtonClicked()
-    {
-        if (PhotonNetwork.IsConnected)
-        {
-            PhotonNetwork.Disconnect();
-        }
-    }
-    
-    public void OnLeaveRoomButtonClicked()
-    {
-        if (PhotonNetwork.InRoom)
-        {
-            PhotonNetwork.LeaveRoom();
-        }
-    }
-    
-    public void LogFeedback(string message)
-    {
-        if (feedbackText != null)
-        {
-            feedbackText.text += System.Environment.NewLine + message;
-        }
-        Debug.Log(message);
-    }
-    
-    #region Photon Callbacks
-    
-    public override void OnConnectedToMaster()
-    {
-        LogFeedback("Connected to Master Server");
-    }
-    
-    public override void OnJoinedRoom()
-    {
-        LogFeedback("Joined room successfully");
-    }
-    
-    public override void OnLeftRoom()
-    {
-        LogFeedback("Left room");
-    }
-    
-    public override void OnDisconnected(DisconnectCause cause)
-    {
-        LogFeedback("Disconnected: " + cause);
-    }
-    
-    public override void OnPlayerEnteredRoom(Player newPlayer)
-    {
-        LogFeedback("Player " + newPlayer.NickName + " joined");
-    }
-    
-    public override void OnPlayerLeftRoom(Player otherPlayer)
-    {
-        LogFeedback("Player " + otherPlayer.NickName + " left");
-    }
-    
-    #endregion
+	[SerializeField] private GameObject positionTextPrefab;
+	[SerializeField] private Transform positionTextParent; // Optional. If not set, will try to find one.
+	[SerializeField] private string playerObjectName = "Player"; // Optional hint-only
+	[SerializeField] private float refreshDelayOnJoin = 0.5f; // Wait a moment for player objects to spawn
+
+	private readonly Dictionary<int, Text> actorNumberToText = new Dictionary<int, Text>();
+	private readonly Dictionary<int, Transform> actorNumberToTransform = new Dictionary<int, Transform>();
+
+	void Awake()
+	{
+		// Try to auto-locate a default parent under Canvas
+		if (positionTextParent == null)
+		{
+			var spawner = GameObject.Find("PositionTextSpawner");
+			if (spawner != null)
+			{
+				positionTextParent = spawner.transform;
+			}
+			else
+			{
+				Canvas canvas = FindObjectOfType<Canvas>();
+				if (canvas != null)
+				{
+					positionTextParent = canvas.transform;
+				}
+			}
+		}
+	}
+
+	void Update()
+	{
+		// Update all known players' position text each frame
+		if (actorNumberToText.Count == 0)
+		{
+			return;
+		}
+
+		foreach (var kvp in actorNumberToText)
+		{
+			int actorNumber = kvp.Key;
+			Text text = kvp.Value;
+
+			Transform targetTransform = null;
+			actorNumberToTransform.TryGetValue(actorNumber, out targetTransform);
+
+			if (targetTransform == null)
+			{
+				// Try to (re)locate the transform if missing
+				var views = FindObjectsOfType<PhotonView>();
+				for (int i = 0; i < views.Length; i++)
+				{
+					if (views[i].OwnerActorNr == actorNumber)
+					{
+						// Prefer an object with the hint name, otherwise take the first match
+						if (views[i].gameObject.name == playerObjectName || targetTransform == null)
+						{
+							targetTransform = views[i].transform;
+							actorNumberToTransform[actorNumber] = targetTransform;
+							// Don't break if this wasn't the hinted name; keep looking for a better match
+						}
+					}
+				}
+			}
+
+			if (text != null)
+			{
+				if (targetTransform != null)
+				{
+					Vector3 p = targetTransform.position;
+					text.text = $"P{actorNumber} ({p.x:F1}, {p.y:F1}, {p.z:F1})";
+				}
+				else
+				{
+					text.text = $"P{actorNumber} (---)";
+				}
+			}
+		}
+	}
+
+	public override void OnJoinedRoom()
+	{
+		StartCoroutine(RefreshPlayersAfterDelay());
+	}
+
+	public override void OnPlayerEnteredRoom(Player newPlayer)
+	{
+		AddOrUpdatePlayerUI(newPlayer.ActorNumber);
+	}
+
+	public override void OnPlayerLeftRoom(Player otherPlayer)
+	{
+		RemovePlayerUI(otherPlayer.ActorNumber);
+	}
+
+	private IEnumerator RefreshPlayersAfterDelay()
+	{
+		yield return new WaitForSeconds(refreshDelayOnJoin);
+		SyncExistingPlayers();
+	}
+
+	private void SyncExistingPlayers()
+	{
+		// Ensure we have UI for everyone currently in the room
+		if (!PhotonNetwork.InRoom)
+		{
+			return;
+		}
+
+		var players = PhotonNetwork.PlayerList;
+		for (int i = 0; i < players.Length; i++)
+		{
+			AddOrUpdatePlayerUI(players[i].ActorNumber);
+		}
+	}
+
+	private void AddOrUpdatePlayerUI(int actorNumber)
+	{
+		if (positionTextPrefab == null)
+		{
+			Debug.LogWarning("UIManager: PositionText prefab is not assigned.");
+			return;
+		}
+
+		Text text;
+		if (!actorNumberToText.TryGetValue(actorNumber, out text) || text == null)
+		{
+			var go = Instantiate(positionTextPrefab, positionTextParent);
+			text = go.GetComponent<Text>();
+			actorNumberToText[actorNumber] = text;
+		}
+
+		// Try to bind to an existing player transform
+		var views = FindObjectsOfType<PhotonView>();
+		Transform best = null;
+		for (int i = 0; i < views.Length; i++)
+		{
+			if (views[i].OwnerActorNr == actorNumber)
+			{
+				if (views[i].gameObject.name == playerObjectName)
+				{
+					best = views[i].transform;
+					break; // exact match
+				}
+				if (best == null)
+				{
+					best = views[i].transform; // fallback to first owned object
+				}
+			}
+		}
+		if (best != null)
+		{
+			actorNumberToTransform[actorNumber] = best;
+		}
+	}
+
+	private void RemovePlayerUI(int actorNumber)
+	{
+		if (actorNumberToText.ContainsKey(actorNumber))
+		{
+			var text = actorNumberToText[actorNumber];
+			if (text != null)
+			{
+				Destroy(text.gameObject);
+			}
+			actorNumberToText.Remove(actorNumber);
+		}
+
+		if (actorNumberToTransform.ContainsKey(actorNumber))
+		{
+			actorNumberToTransform.Remove(actorNumber);
+		}
+	}
 }

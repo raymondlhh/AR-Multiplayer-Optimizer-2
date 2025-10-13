@@ -140,7 +140,7 @@ public class AMOSessionManager : MonoBehaviour
 	}
 }
 
-internal static class AMOResources
+public static class AMOResources
 {
 	private const string DefaultResourcePath = "AMOConfig";
 
