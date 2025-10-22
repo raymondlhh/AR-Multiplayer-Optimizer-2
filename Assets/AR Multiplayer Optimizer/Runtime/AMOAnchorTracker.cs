@@ -2,9 +2,10 @@ using System;
 using System.Collections;
 using UnityEngine;
 
-// We intentionally avoid hard dependencies on Vuforia's namespaces at compile-time
+// [AUTOMATIC] We intentionally avoid hard dependencies on Vuforia's namespaces at compile-time
 // so the package can import even before Vuforia is present. Where needed, we use
 // reflection to find the ImageTarget by name and subscribe to status changes.
+// This component automatically handles Vuforia ImageTarget detection and alignment.
 
 public class AMOAnchorTracker : MonoBehaviour
 {

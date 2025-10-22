@@ -118,6 +118,12 @@ public class NetworkManager : MonoBehaviourPunCallbacks
         Debug.Log("Player entered room: " + newPlayer.NickName + " (Total players: " + PhotonNetwork.CurrentRoom.PlayerCount + ")");
         // Update UI when new player joins
         UpdateUIForCurrentPlayer();
+        
+        // Notify AR Multiplayer Optimizer about new player
+        if (AMOSessionManager.Instance != null)
+        {
+            AMOSessionManager.Instance.HandlePlayerEnteredRoom(newPlayer);
+        }
     }
     
     public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)

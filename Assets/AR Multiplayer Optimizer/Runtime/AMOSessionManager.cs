@@ -8,12 +8,16 @@ using Photon.Realtime;
 #endif
 
 /// <summary>
-/// Orchestrates anchor alignment and (optionally) a multiplayer "everyone ready" barrier.
-/// - Ensures an AnchorRoot exists.
-/// - Tracks a chosen Vuforia ImageTarget by name and snaps AnchorRoot to it when first detected.
+/// [AUTOMATIC] Orchestrates anchor alignment and (optionally) a multiplayer "everyone ready" barrier.
+/// - Automatically ensures an AnchorRoot exists.
+/// - Automatically tracks a chosen Vuforia ImageTarget by name and snaps AnchorRoot to it when first detected.
+/// - Automatically synchronizes anchor position across all multiplayer clients.
 /// - Optionally gates gameplay until all PUN2 clients are aligned.
+/// 
+/// Manual Setup Required:
+/// - Assign AMOConfig asset in Inspector (or use Setup Helper)
 /// </summary>
-public class AMOSessionManager : MonoBehaviour
+public class AMOSessionManager : MonoBehaviour, IPunObservable
 {
 	public static AMOSessionManager Instance { get; private set; }
 
@@ -61,15 +65,20 @@ public class AMOSessionManager : MonoBehaviour
 			existing = new GameObject(string.IsNullOrWhiteSpace(config.anchorRootName) ? "AnchorRoot" : config.anchorRootName);
 
 		anchorRoot = existing.transform;
+		Debug.Log($"[AMOSession] [AUTOMATIC] Created/Found AnchorRoot: {anchorRoot.name}");
 	}
 
 	private void EnsureTracker()
 	{
 		if (anchorTracker == null)
+		{
 			anchorTracker = gameObject.AddComponent<AMOAnchorTracker>();
+			Debug.Log("[AMOSession] [AUTOMATIC] Created AMOAnchorTracker component");
+		}
 
 		anchorTracker.Initialize(config, anchorRoot);
 		anchorTracker.onAlignedOnce += HandleLocalAligned;
+		Debug.Log("[AMOSession] [AUTOMATIC] Initialized AMOAnchorTracker");
 	}
 
 	private void OnDestroy()
@@ -88,6 +97,11 @@ public class AMOSessionManager : MonoBehaviour
 		{
 			alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
 			PhotonView photonView = GetOrCreatePhotonView();
+			
+			// Send anchor root position and rotation to all other clients
+			photonView.RPC(nameof(RPC_SyncAnchorRoot), RpcTarget.OthersBuffered, 
+				anchorRoot.position, anchorRoot.rotation);
+			
 			photonView.RPC(nameof(RPC_RemoteAligned), RpcTarget.OthersBuffered, PhotonNetwork.LocalPlayer.ActorNumber);
 			CheckAllReady();
 		}
@@ -95,6 +109,22 @@ public class AMOSessionManager : MonoBehaviour
 	}
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+	[PunRPC]
+	private void RPC_SyncAnchorRoot(Vector3 position, Quaternion rotation, PhotonMessageInfo _)
+	{
+		// Only apply anchor root sync if we haven't aligned locally yet
+		if (!IsAligned && anchorRoot != null)
+		{
+			Debug.Log($"[AMOSession] Syncing anchor root from remote client: {position}");
+			anchorRoot.SetPositionAndRotation(position, rotation);
+			
+			// Mark as aligned since we received the anchor position
+			IsAligned = true;
+			alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
+			CheckAllReady();
+		}
+	}
+
 	[PunRPC]
 	private void RPC_RemoteAligned(int actorNumber, PhotonMessageInfo _)
 	{
@@ -138,6 +168,46 @@ public class AMOSessionManager : MonoBehaviour
 		// Hook point: gameplay can safely proceed. For now, we simply log.
 		Debug.Log("[AMOSession] All clients aligned. Gameplay may proceed.");
 	}
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+	// Handle late-joining clients by sending them the current anchor position
+	// This method should be called from NetworkManager's OnPlayerEnteredRoom callback
+	public void HandlePlayerEnteredRoom(Player newPlayer)
+	{
+		if (IsAligned && anchorRoot != null)
+		{
+			PhotonView photonView = GetOrCreatePhotonView();
+			photonView.RPC(nameof(RPC_SyncAnchorRoot), newPlayer, 
+				anchorRoot.position, anchorRoot.rotation);
+		}
+	}
+
+	public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+	{
+		if (stream.IsWriting)
+		{
+			// Send anchor root position and rotation
+			stream.SendNext(anchorRoot != null ? anchorRoot.position : Vector3.zero);
+			stream.SendNext(anchorRoot != null ? anchorRoot.rotation : Quaternion.identity);
+			stream.SendNext(IsAligned);
+		}
+		else
+		{
+			// Receive anchor root position and rotation
+			Vector3 receivedPosition = (Vector3)stream.ReceiveNext();
+			Quaternion receivedRotation = (Quaternion)stream.ReceiveNext();
+			bool receivedAligned = (bool)stream.ReceiveNext();
+			
+			// Only apply if we haven't aligned locally and received valid data
+			if (!IsAligned && anchorRoot != null && receivedAligned)
+			{
+				Debug.Log($"[AMOSession] Syncing anchor root from stream: {receivedPosition}");
+				anchorRoot.SetPositionAndRotation(receivedPosition, receivedRotation);
+				IsAligned = true;
+			}
+		}
+	}
+#endif
 }
 
 public static class AMOResources

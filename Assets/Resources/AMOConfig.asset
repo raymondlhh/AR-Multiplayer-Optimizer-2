@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: AMOConfig
   m_EditorClassIdentifier: 
   autoFixOnPlay: 1
-  imageTargetName: 
+  imageTargetName: ARMascot
   anchorRootName: AnchorRoot
   waitForAllClients: 1
   alignSmoothing: 0.2

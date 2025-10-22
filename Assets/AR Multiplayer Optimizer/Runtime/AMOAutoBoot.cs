@@ -1,8 +1,10 @@
 using UnityEngine;
 
 /// <summary>
-/// Auto-creates a persistent AMOSessionManager at runtime if one is not present.
-/// Attach to any scene object or include via a bootstrap prefab.
+/// [AUTOMATIC] Auto-creates a persistent AMOSessionManager at runtime if one is not present.
+/// - Automatically creates AMOSessionManager if none exists
+/// - Automatically loads or creates AMOConfig if missing
+/// - No manual setup required - just attach to any GameObject
 /// </summary>
 public class AMOAutoBoot : MonoBehaviour
 {
@@ -12,17 +14,32 @@ public class AMOAutoBoot : MonoBehaviour
 	private void Awake()
 	{
 		if (AMOSessionManager.Instance != null)
+		{
+			Debug.Log("[AMOAutoBoot] [AUTOMATIC] AMOSessionManager already exists, skipping creation");
 			return;
+		}
 
+		Debug.Log("[AMOAutoBoot] [AUTOMATIC] Creating AMOSessionManager...");
 		var go = new GameObject("AMOSessionManager");
 		var session = go.AddComponent<AMOSessionManager>();
+		
 		if (config == null)
+		{
+			Debug.Log("[AMOAutoBoot] [AUTOMATIC] Loading or creating AMOConfig...");
 			config = AMOResources.LoadOrCreateConfig();
+		}
 
 		// Wire config by serializing through inspector or default loader
 		var field = typeof(AMOSessionManager).GetField("config", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 		if (field != null)
+		{
 			field.SetValue(session, config);
+			Debug.Log("[AMOAutoBoot] [AUTOMATIC] AMOSessionManager configured successfully");
+		}
+		else
+		{
+			Debug.LogWarning("[AMOAutoBoot] Could not set config field - manual assignment may be required");
+		}
 	}
 }
 
