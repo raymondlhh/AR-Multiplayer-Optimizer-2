@@ -34,11 +34,11 @@ public class AMOAutoBoot : MonoBehaviour
 		if (field != null)
 		{
 			field.SetValue(session, config);
-			Debug.Log("[AMOAutoBoot] [AUTOMATIC] AMOSessionManager configured successfully");
+			Debug.Log("[AMOAutoBoot] [AUTOMATIC] AMOSessionManager configured successfully with license key preserved");
 		}
 		else
 		{
-			Debug.LogWarning("[AMOAutoBoot] Could not set config field - manual assignment may be required");
+			Debug.LogWarning("[AMOAutoBoot] Could not set config field - using default config");
 		}
 	}
 }

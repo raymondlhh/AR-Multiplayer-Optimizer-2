@@ -63,6 +63,8 @@ public class AMOSetupHelper : EditorWindow
         GUILayout.Label("✅ Vuforia integration");
         GUILayout.Label("✅ Position synchronization");
         GUILayout.Label("✅ PhotonView configuration");
+        GUILayout.Label("✅ Virtual object anchoring");
+        GUILayout.Label("✅ Image Target center reference");
     }
 
     private void CreateAMOConfig()

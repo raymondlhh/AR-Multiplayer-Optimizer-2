@@ -21,7 +21,7 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 {
 	public static AMOSessionManager Instance { get; private set; }
 
-	[SerializeField]
+	[SerializeField, HideInInspector]
 	private AMOConfig config;
 
 	[SerializeField]
@@ -53,6 +53,27 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 
 		EnsureAnchorRoot();
 		EnsureTracker();
+	}
+	
+	private void Start()
+	{
+		// Check if we're already in a room and need to sync
+		StartCoroutine(CheckForExistingPlayers());
+	}
+	
+	private System.Collections.IEnumerator CheckForExistingPlayers()
+	{
+		// Wait a frame for Photon to initialize
+		yield return null;
+		
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+		// If we're in a room and there are other players, request anchor position
+		if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom.PlayerCount > 1)
+		{
+			yield return new WaitForSeconds(1f); // Wait a bit for other players to be ready
+			RequestAnchorPositionFromOthers();
+		}
+#endif
 	}
 
 	private void EnsureAnchorRoot()
@@ -90,6 +111,12 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	private void HandleLocalAligned()
 	{
 		IsAligned = true;
+		
+		// Automatically anchor all virtual objects to Image Target center
+		AnchorAllVirtualObjects();
+		
+		// Start continuous synchronization
+		StartContinuousSync();
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 		// Mark self ready and check if all are ready.
@@ -102,6 +129,10 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			photonView.RPC(nameof(RPC_SyncAnchorRoot), RpcTarget.OthersBuffered, 
 				anchorRoot.position, anchorRoot.rotation);
 			
+			// Also broadcast to all players to ensure everyone gets the update
+			photonView.RPC(nameof(RPC_SyncAnchorRoot), RpcTarget.All, 
+				anchorRoot.position, anchorRoot.rotation);
+			
 			photonView.RPC(nameof(RPC_RemoteAligned), RpcTarget.OthersBuffered, PhotonNetwork.LocalPlayer.ActorNumber);
 			CheckAllReady();
 		}
@@ -112,16 +143,36 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	[PunRPC]
 	private void RPC_SyncAnchorRoot(Vector3 position, Quaternion rotation, PhotonMessageInfo _)
 	{
-		// Only apply anchor root sync if we haven't aligned locally yet
-		if (!IsAligned && anchorRoot != null)
+		// Apply anchor root sync if we haven't aligned locally yet OR if this is a better position
+		if (anchorRoot != null)
 		{
-			Debug.Log($"[AMOSession] Syncing anchor root from remote client: {position}");
-			anchorRoot.SetPositionAndRotation(position, rotation);
-			
-			// Mark as aligned since we received the anchor position
-			IsAligned = true;
-			alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
-			CheckAllReady();
+			// If we're not aligned yet, use this position
+			if (!IsAligned)
+			{
+				Debug.Log($"[AMOSession] Syncing anchor root from remote client: {position}");
+				anchorRoot.SetPositionAndRotation(position, rotation);
+				
+				// Mark as aligned since we received the anchor position
+				IsAligned = true;
+				
+				// Automatically anchor all virtual objects to Image Target center
+				AnchorAllVirtualObjects();
+				
+				// Start continuous synchronization
+				StartContinuousSync();
+				
+				alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
+				CheckAllReady();
+			}
+			else
+			{
+				// If we're already aligned, update our position to match the remote client
+				Debug.Log($"[AMOSession] Updating anchor root to match remote client: {position}");
+				anchorRoot.SetPositionAndRotation(position, rotation);
+				
+				// Re-anchor all objects to the new position
+				AnchorAllVirtualObjects();
+			}
 		}
 	}
 
@@ -168,6 +219,139 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		// Hook point: gameplay can safely proceed. For now, we simply log.
 		Debug.Log("[AMOSession] All clients aligned. Gameplay may proceed.");
 	}
+	
+	/// <summary>
+	/// [AUTOMATIC] Anchors all virtual objects to the Image Target center for proper synchronization
+	/// </summary>
+	private void AnchorAllVirtualObjects()
+	{
+		Debug.Log("[AMOSession] [AUTOMATIC] Anchoring all virtual objects to Image Target center...");
+		
+		// Find and anchor all objects with common virtual object names
+		string[] objectNames = { "Cube", "Player", "VirtualObject", "ARObject" };
+		foreach (string name in objectNames)
+		{
+			GameObject obj = GameObject.Find(name);
+			if (obj != null)
+			{
+				AnchorObjectToImageTarget(obj);
+			}
+		}
+		
+		// Find and anchor all objects with common virtual object tags
+		string[] tags = { "Player", "VirtualObject", "ARObject" };
+		foreach (string tag in tags)
+		{
+			GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
+			foreach (GameObject obj in objects)
+			{
+				AnchorObjectToImageTarget(obj);
+			}
+		}
+		
+		Debug.Log("[AMOSession] [AUTOMATIC] Virtual objects anchored to Image Target center");
+	}
+	
+	/// <summary>
+	/// Anchors a specific object to the Image Target center with improved synchronization
+	/// </summary>
+	private void AnchorObjectToImageTarget(GameObject obj)
+	{
+		if (obj == null || anchorRoot == null) return;
+		
+		// Store world position before re-parenting
+		Vector3 worldPosition = obj.transform.position;
+		Quaternion worldRotation = obj.transform.rotation;
+		
+		// Re-parent to anchor root (which is positioned at Image Target center)
+		obj.transform.SetParent(anchorRoot, true);
+		
+		// Convert world position to local position relative to Image Target center
+		Vector3 localPos = anchorRoot.InverseTransformPoint(worldPosition);
+		obj.transform.localPosition = localPos;
+		
+		// Convert world rotation to local rotation relative to Image Target center
+		Quaternion localRot = Quaternion.Inverse(anchorRoot.rotation) * worldRotation;
+		obj.transform.localRotation = localRot;
+		
+		// Add PhotonView for individual object synchronization if not present
+		EnsureObjectSynchronization(obj);
+		
+		Debug.Log($"[AMOSession] [AUTOMATIC] Anchored {obj.name} to Image Target center at local position {localPos}");
+	}
+	
+	/// <summary>
+	/// Starts continuous synchronization to maintain consistent positions
+	/// </summary>
+	private void StartContinuousSync()
+	{
+		Debug.Log("[AMOSession] [AUTOMATIC] Starting continuous synchronization...");
+		
+		// Ensure all objects are properly anchored
+		InvokeRepeating(nameof(EnsureObjectsAnchored), 1f, 2f);
+	}
+	
+	/// <summary>
+	/// Continuously ensures all objects remain properly anchored
+	/// </summary>
+	private void EnsureObjectsAnchored()
+	{
+		if (!IsAligned || anchorRoot == null) return;
+		
+		// Find all objects that should be anchored
+		string[] objectNames = { "Cube", "Player", "VirtualObject", "ARObject" };
+		foreach (string name in objectNames)
+		{
+			GameObject obj = GameObject.Find(name);
+			if (obj != null && obj.transform.parent != anchorRoot)
+			{
+				Debug.Log($"[AMOSession] [AUTOMATIC] Re-anchoring {obj.name} to Image Target center");
+				AnchorObjectToImageTarget(obj);
+			}
+		}
+		
+		// Check objects by tags
+		string[] tags = { "Player", "VirtualObject", "ARObject" };
+		foreach (string tag in tags)
+		{
+			GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
+			foreach (GameObject obj in objects)
+			{
+				if (obj != null && obj.transform.parent != anchorRoot)
+				{
+					Debug.Log($"[AMOSession] [AUTOMATIC] Re-anchoring {obj.name} to Image Target center");
+					AnchorObjectToImageTarget(obj);
+				}
+			}
+		}
+	}
+	
+	/// <summary>
+	/// Ensures individual objects have proper Photon synchronization
+	/// </summary>
+	private void EnsureObjectSynchronization(GameObject obj)
+	{
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+		var photonView = obj.GetComponent<PhotonView>();
+		if (photonView == null)
+		{
+			photonView = obj.AddComponent<PhotonView>();
+			photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
+			Debug.Log($"[AMOSession] [AUTOMATIC] Added PhotonView to {obj.name} for synchronization");
+		}
+		
+		// Add a simple position synchronizer if not present
+		var componentType = System.Type.GetType("AMOObjectPositionSync");
+		if (componentType != null)
+		{
+			var positionSync = obj.GetComponent(componentType);
+			if (positionSync == null)
+			{
+				obj.AddComponent(componentType);
+			}
+		}
+#endif
+	}
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 	// Handle late-joining clients by sending them the current anchor position
@@ -179,6 +363,39 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			PhotonView photonView = GetOrCreatePhotonView();
 			photonView.RPC(nameof(RPC_SyncAnchorRoot), newPlayer, 
 				anchorRoot.position, anchorRoot.rotation);
+			
+			Debug.Log($"[AMOSession] [AUTOMATIC] Sent anchor position to new player {newPlayer.ActorNumber}: {anchorRoot.position}");
+		}
+		else if (!IsAligned)
+		{
+			// If we're not aligned yet, request anchor position from other players
+			RequestAnchorPositionFromOthers();
+		}
+	}
+	
+	/// <summary>
+	/// Requests anchor position from other players when we join late
+	/// </summary>
+	private void RequestAnchorPositionFromOthers()
+	{
+		PhotonView photonView = GetOrCreatePhotonView();
+		photonView.RPC(nameof(RPC_RequestAnchorPosition), RpcTarget.OthersBuffered, 
+			PhotonNetwork.LocalPlayer.ActorNumber);
+		
+		Debug.Log("[AMOSession] [AUTOMATIC] Requesting anchor position from other players");
+	}
+	
+	[PunRPC]
+	private void RPC_RequestAnchorPosition(int requesterActorNumber, PhotonMessageInfo _)
+	{
+		// Only respond if we're aligned and the requester is not us
+		if (IsAligned && anchorRoot != null && requesterActorNumber != PhotonNetwork.LocalPlayer.ActorNumber)
+		{
+			PhotonView photonView = GetOrCreatePhotonView();
+			photonView.RPC(nameof(RPC_SyncAnchorRoot), RpcTarget.All, 
+				anchorRoot.position, anchorRoot.rotation);
+			
+			Debug.Log($"[AMOSession] [AUTOMATIC] Responded to anchor position request from player {requesterActorNumber}");
 		}
 	}
 
