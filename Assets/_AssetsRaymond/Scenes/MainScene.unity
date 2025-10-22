@@ -1024,6 +1024,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: AR_Multiplayer_Optimizer_AutoSetup
       objectReference: {fileID: 0}
+    - target: {fileID: 240293940072762400, guid: cb88162d6dbe8e24a89e9bce542702ec,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8335675481407602396, guid: cb88162d6dbe8e24a89e9bce542702ec,
         type: 3}
       propertyPath: m_LocalPosition.x
