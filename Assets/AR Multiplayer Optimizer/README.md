@@ -30,30 +30,17 @@ The AR Multiplayer Optimizer now includes **proper anchor root synchronization**
 
 ## Setup Instructions
 
-### 1. **Automatic Setup (Recommended)**
-1. Go to `AR Multiplayer Optimizer > Setup Helper` in the Unity menu
-2. Click "Create AMOConfig" to create the configuration asset
-3. Click "Setup AMOSessionManager" to configure the session manager
-4. Click "Test Configuration" to verify everything is set up correctly
+### **Automatic Setup (Zero Configuration)**
+1. **Add AMOAutoBoot script to any GameObject in your scene**
+   - Create an empty GameObject (or use existing one)
+   - Add the `AMOAutoBoot` script
+   - **That's it!** Everything else is automatic
 
-### 2. **Manual Setup**
-
-#### Step 1: Create AMOConfig
-1. Right-click in Project window → Create → AR Multiplayer Optimizer → Config
-2. Set the Image Target name (e.g., "ARMascot")
-3. Configure other settings as needed
-4. Save the asset in the `Resources` folder
-
-#### Step 2: Setup AMOSessionManager
-1. Create an empty GameObject named "AMOSessionManager"
-2. Add the `AMOSessionManager` script
-3. Add a `PhotonView` component
-4. Configure the PhotonView:
-   - Add `AMOSessionManager` to Observed Components
-   - Set Synchronization to "Unreliable On Change"
-
-#### Step 3: Configure NetworkManager
-The NetworkManager should automatically call the AR Multiplayer Optimizer when players join.
+The system will automatically:
+- Create AMOConfig with sensible defaults
+- Setup AMOSessionManager with proper configuration
+- Configure PhotonView for networking
+- Handle all synchronization automatically
 
 ## Configuration Options
 
@@ -84,6 +71,8 @@ The NetworkManager should automatically call the AR Multiplayer Optimizer when p
 
 ### Debug Information
 The system provides detailed debug logs:
+- `[AMOAutoBoot] [AUTOMATIC] Creating AMOSessionManager...`
+- `[AMOSession] [AUTOMATIC] Created/Found AnchorRoot: AnchorRoot`
 - `[AMOSession] Syncing anchor root from remote client: (x, y, z)`
 - `[AMOSession] All clients aligned. Gameplay may proceed.`
 
@@ -124,7 +113,7 @@ If you're upgrading from a previous version:
 
 For issues or questions:
 1. Check the console for debug messages
-2. Use the Setup Helper to verify configuration
+2. Verify AMOAutoBoot script is attached to a GameObject
 3. Test with the same physical image target on all devices
 4. Ensure all clients are in the same Photon room
 

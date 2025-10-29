@@ -13,9 +13,7 @@ using Photon.Realtime;
 /// - Automatically tracks a chosen Vuforia ImageTarget by name and snaps AnchorRoot to it when first detected.
 /// - Automatically synchronizes anchor position across all multiplayer clients.
 /// - Optionally gates gameplay until all PUN2 clients are aligned.
-/// 
-/// Manual Setup Required:
-/// - Assign AMOConfig asset in Inspector (or use Setup Helper)
+/// - Automatically creates and configures AMOConfig with sensible defaults.
 /// </summary>
 public class AMOSessionManager : MonoBehaviour, IPunObservable
 {
@@ -29,6 +27,9 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 
 	[SerializeField]
 	private AMOAnchorTracker anchorTracker;
+
+	[SerializeField, HideInInspector]
+	private GameObject anchorVisualization;
 
 	public bool IsAligned { get; private set; }
 
@@ -100,12 +101,199 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		anchorTracker.Initialize(config, anchorRoot);
 		anchorTracker.onAlignedOnce += HandleLocalAligned;
 		Debug.Log("[AMOSession] [AUTOMATIC] Initialized AMOAnchorTracker");
+		
+		// Create anchor visualization
+		EnsureAnchorVisualization();
 	}
 
 	private void OnDestroy()
 	{
 		if (anchorTracker != null)
 			anchorTracker.onAlignedOnce -= HandleLocalAligned;
+			
+		// Clean up visualization
+		if (anchorVisualization != null)
+		{
+			DestroyImmediate(anchorVisualization);
+		}
+	}
+
+	/// <summary>
+	/// Creates and manages the anchor center visualization for runtime builds
+	/// </summary>
+	private void EnsureAnchorVisualization()
+	{
+		if (!config.showAnchorCenter)
+		{
+			if (anchorVisualization != null)
+			{
+				anchorVisualization.SetActive(false);
+			}
+			return;
+		}
+
+		if (anchorVisualization == null)
+		{
+			CreateAnchorVisualization();
+		}
+		else
+		{
+			anchorVisualization.SetActive(true);
+			UpdateVisualizationProperties();
+		}
+	}
+
+	/// <summary>
+	/// Creates the anchor center visualization GameObject
+	/// </summary>
+	private void CreateAnchorVisualization()
+	{
+		if (anchorRoot == null) return;
+
+		// Create visualization GameObject
+		anchorVisualization = new GameObject("AnchorCenterVisualization");
+		anchorVisualization.transform.SetParent(anchorRoot, false);
+		anchorVisualization.transform.localPosition = Vector3.zero;
+		anchorVisualization.transform.localRotation = Quaternion.identity;
+
+		// Add visual components
+		UpdateVisualizationProperties();
+		
+		Debug.Log("[AMOSession] [AUTOMATIC] Created anchor center visualization");
+	}
+
+	/// <summary>
+	/// Updates the visualization properties based on config
+	/// </summary>
+	private void UpdateVisualizationProperties()
+	{
+		if (anchorVisualization == null) return;
+
+		// Update scale
+		float scale = config.anchorCenterSize;
+		anchorVisualization.transform.localScale = Vector3.one * scale;
+
+		// Create or update visual components
+		CreateVisualizationComponents();
+	}
+
+	/// <summary>
+	/// Creates the visual components for the anchor center
+	/// </summary>
+	private void CreateVisualizationComponents()
+	{
+		if (anchorVisualization == null) return;
+
+		// Clear existing components
+		var existingRenderers = anchorVisualization.GetComponentsInChildren<Renderer>();
+		foreach (var renderer in existingRenderers)
+		{
+			if (Application.isPlaying)
+				Destroy(renderer.gameObject);
+			else
+				DestroyImmediate(renderer.gameObject);
+		}
+
+		// Create center sphere
+		var centerSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+		centerSphere.name = "CenterSphere";
+		centerSphere.transform.SetParent(anchorVisualization.transform, false);
+		centerSphere.transform.localPosition = Vector3.zero;
+		centerSphere.transform.localScale = Vector3.one * 0.1f;
+
+		// Set material color
+		var centerRenderer = centerSphere.GetComponent<Renderer>();
+		if (centerRenderer != null)
+		{
+			var material = new Material(Shader.Find("Standard"));
+			material.color = config.anchorCenterColor;
+			material.SetFloat("_Metallic", 0.5f);
+			material.SetFloat("_Smoothness", 0.8f);
+			centerRenderer.material = material;
+		}
+
+		// Remove collider
+		var collider = centerSphere.GetComponent<Collider>();
+		if (collider != null)
+		{
+			if (Application.isPlaying)
+				Destroy(collider);
+			else
+				DestroyImmediate(collider);
+		}
+
+		// Create coordinate axes
+		CreateAxis("XAxis", Vector3.right, Color.red);
+		CreateAxis("YAxis", Vector3.up, Color.green);
+		CreateAxis("ZAxis", Vector3.forward, Color.blue);
+
+		// Create circle
+		CreateCircle();
+	}
+
+	/// <summary>
+	/// Creates a coordinate axis
+	/// </summary>
+	private void CreateAxis(string name, Vector3 direction, Color color)
+	{
+		var axis = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+		axis.name = name;
+		axis.transform.SetParent(anchorVisualization.transform, false);
+		
+		// Position and rotate
+		axis.transform.localPosition = direction * 0.15f;
+		axis.transform.localRotation = Quaternion.FromToRotation(Vector3.up, direction);
+		axis.transform.localScale = new Vector3(0.02f, 0.3f, 0.02f);
+
+		// Set material
+		var axisRenderer = axis.GetComponent<Renderer>();
+		if (axisRenderer != null)
+		{
+			var material = new Material(Shader.Find("Standard"));
+			material.color = color;
+			axisRenderer.material = material;
+		}
+
+		// Remove collider
+		var collider = axis.GetComponent<Collider>();
+		if (collider != null)
+		{
+			if (Application.isPlaying)
+				Destroy(collider);
+			else
+				DestroyImmediate(collider);
+		}
+	}
+
+	/// <summary>
+	/// Creates a circle around the center
+	/// </summary>
+	private void CreateCircle()
+	{
+		var circle = new GameObject("Circle");
+		circle.transform.SetParent(anchorVisualization.transform, false);
+		circle.transform.localPosition = Vector3.zero;
+		circle.transform.localRotation = Quaternion.identity;
+
+		// Create circle using LineRenderer
+		var lineRenderer = circle.AddComponent<LineRenderer>();
+		var lineMaterial = new Material(Shader.Find("Sprites/Default"));
+		lineMaterial.color = config.anchorCenterColor;
+		lineRenderer.material = lineMaterial;
+		lineRenderer.startWidth = 0.01f;
+		lineRenderer.endWidth = 0.01f;
+		lineRenderer.positionCount = 33; // 32 segments + 1 to close the circle
+		lineRenderer.useWorldSpace = false;
+
+		// Generate circle points
+		float radius = 0.2f;
+		for (int i = 0; i <= 32; i++)
+		{
+			float angle = i * 360f / 32f * Mathf.Deg2Rad;
+			float x = Mathf.Cos(angle) * radius;
+			float z = Mathf.Sin(angle) * radius;
+			lineRenderer.SetPosition(i, new Vector3(x, 0, z));
+		}
 	}
 
 	private void HandleLocalAligned()
@@ -117,6 +305,9 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		
 		// Start continuous synchronization
 		StartContinuousSync();
+		
+		// Update visualization when aligned
+		EnsureAnchorVisualization();
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 		// Mark self ready and check if all are ready.
@@ -425,6 +616,98 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		}
 	}
 #endif
+
+	/// <summary>
+	/// Toggle anchor center visualization on/off
+	/// </summary>
+	public void ToggleAnchorVisualization()
+	{
+		if (config != null)
+		{
+			config.showAnchorCenter = !config.showAnchorCenter;
+			EnsureAnchorVisualization();
+			Debug.Log($"[AMOSession] Anchor visualization {(config.showAnchorCenter ? "enabled" : "disabled")}");
+		}
+	}
+
+	/// <summary>
+	/// Set anchor center visualization visibility
+	/// </summary>
+	public void SetAnchorVisualization(bool visible)
+	{
+		if (config != null)
+		{
+			config.showAnchorCenter = visible;
+			EnsureAnchorVisualization();
+			Debug.Log($"[AMOSession] Anchor visualization {(visible ? "enabled" : "disabled")}");
+		}
+	}
+
+	/// <summary>
+	/// Draw anchor center visualization in Scene view
+	/// </summary>
+	private void OnDrawGizmos()
+	{
+		if (!config.showAnchorCenter || anchorRoot == null) return;
+
+		// Set gizmo color
+		Gizmos.color = config.anchorCenterColor;
+		
+		// Draw a sphere at the anchor center
+		Gizmos.DrawSphere(anchorRoot.position, config.anchorCenterSize * 0.1f);
+		
+		// Draw coordinate axes
+		float axisLength = config.anchorCenterSize * 0.3f;
+		
+		// X axis (red)
+		Gizmos.color = Color.red;
+		Gizmos.DrawLine(anchorRoot.position, anchorRoot.position + anchorRoot.right * axisLength);
+		
+		// Y axis (green)
+		Gizmos.color = Color.green;
+		Gizmos.DrawLine(anchorRoot.position, anchorRoot.position + anchorRoot.up * axisLength);
+		
+		// Z axis (blue)
+		Gizmos.color = Color.blue;
+		Gizmos.DrawLine(anchorRoot.position, anchorRoot.position + anchorRoot.forward * axisLength);
+		
+		// Draw a circle around the center
+		Gizmos.color = config.anchorCenterColor;
+		DrawCircle(anchorRoot.position, anchorRoot.up, config.anchorCenterSize * 0.2f);
+	}
+
+	/// <summary>
+	/// Draw anchor center visualization when selected
+	/// </summary>
+	private void OnDrawGizmosSelected()
+	{
+		if (!config.showAnchorCenter || anchorRoot == null) return;
+
+		// Draw additional visualization when selected
+		Gizmos.color = Color.yellow;
+		Gizmos.DrawWireSphere(anchorRoot.position, config.anchorCenterSize * 0.15f);
+	}
+
+	/// <summary>
+	/// Helper method to draw a circle using Gizmos
+	/// </summary>
+	private void DrawCircle(Vector3 center, Vector3 normal, float radius)
+	{
+		int segments = 32;
+		float angleStep = 360f / segments;
+		
+		Vector3 previousPoint = center + Vector3.Cross(normal, Vector3.right).normalized * radius;
+		
+		for (int i = 1; i <= segments; i++)
+		{
+			float angle = i * angleStep * Mathf.Deg2Rad;
+			Vector3 currentPoint = center + Vector3.Cross(normal, Vector3.right).normalized * radius * Mathf.Cos(angle) + 
+								   Vector3.Cross(normal, Vector3.Cross(normal, Vector3.right)).normalized * radius * Mathf.Sin(angle);
+			
+			Gizmos.DrawLine(previousPoint, currentPoint);
+			previousPoint = currentPoint;
+		}
+	}
 }
 
 public static class AMOResources

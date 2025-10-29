@@ -1,22 +1,16 @@
 # AR Multiplayer Optimizer - Setup Guide
 
-## 🚀 **AUTOMATIC SETUP (Recommended)**
+## 🚀 **AUTOMATIC SETUP**
 
-### **Option 1: Fully Automatic (Zero Manual Setup)**
+### **Simple Setup (Zero Manual Configuration)**
 1. **Add AMOAutoBoot to any GameObject in your scene**
    - Create an empty GameObject (or use existing one)
    - Add the `AMOAutoBoot` script
    - **That's it!** Everything else is automatic
 
-### **Option 2: Use Setup Helper**
-1. Go to `AR Multiplayer Optimizer > Setup Helper` in Unity menu
-2. Click "Create AMOConfig" 
-3. Click "Setup AMOSessionManager"
-4. Click "Test Configuration"
-
 ---
 
-## 📋 **What's AUTOMATIC vs MANUAL**
+## 📋 **What's AUTOMATIC**
 
 ### ✅ **AUTOMATIC (No Setup Required)**
 - **AnchorRoot Creation**: Automatically creates/finds the anchor root GameObject
@@ -25,34 +19,36 @@
 - **Position Synchronization**: Automatically syncs anchor position across all clients
 - **Late-Joining Support**: Automatically sends anchor position to new players
 - **PhotonView Setup**: Automatically configures Photon networking
-
-### ⚠️ **MANUAL (One-Time Setup)**
-- **AMOConfig Assignment**: Assign the AMOConfig asset in Inspector (or use Setup Helper)
-- **Image Target Name**: Set the correct Vuforia ImageTarget name in AMOConfig
+- **AMOConfig Creation**: Automatically creates configuration asset with sensible defaults
 
 ---
 
 ## 🔧 **Quick Setup Steps**
 
-### **For New Projects:**
+### **For All Projects:**
 1. **Add AMOAutoBoot**: Attach `AMOAutoBoot` script to any GameObject
 2. **Done!** Everything else is automatic
-
-### **For Existing Projects:**
-1. **Use Setup Helper**: `AR Multiplayer Optimizer > Setup Helper`
-2. **Create AMOConfig**: Click "Create AMOConfig" button
-3. **Setup AMOSessionManager**: Click "Setup AMOSessionManager" button
-4. **Test**: Click "Test Configuration" to verify
 
 ---
 
 ## 🎯 **Configuration Options**
 
-### **AMOConfig Settings (Optional)**
+### **AMOConfig Settings (Auto-Generated)**
 - **Image Target Name**: Name of your Vuforia ImageTarget (default: "ARMascot")
 - **Anchor Root Name**: Name for the anchor GameObject (default: "AnchorRoot")
 - **Wait For All Clients**: Wait for all players to align (default: true)
 - **Auto Fix On Play**: Automatically align when target detected (default: true)
+
+### **Debug Visualization Settings**
+- **Show Anchor Center**: Display anchor center point visualization (default: true)
+- **Anchor Center Size**: Size of the visualization (range: 0.1 - 2.0)
+- **Anchor Center Color**: Color of the visualization (default: red)
+
+### **Position Stabilization Settings**
+- **Enable Position Stabilization**: Prevent object drift when phone moves (default: true)
+- **Update Rate**: How often to update anchor position (range: 0.01 - 1.0 seconds)
+- **Smoothing Factor**: Smoothness of position updates (range: 0.1 - 10.0)
+- **Max Drift Distance**: Maximum distance before forcing snap (range: 0.1 - 2.0 meters)
 
 ### **Default Values (Works Out of the Box)**
 ```csharp
@@ -61,6 +57,13 @@ anchorRootName = "AnchorRoot"     // Anchor root GameObject name
 waitForAllClients = true          // Wait for all players
 autoFixOnPlay = true             // Auto-align on target detection
 alignSmoothing = 0.2f            // Position smoothing
+showAnchorCenter = true          // Show anchor visualization
+anchorCenterSize = 0.5f          // Visualization size
+anchorCenterColor = Color.red    // Visualization color
+enablePositionStabilization = true  // Prevent drift when phone moves
+stabilizationUpdateRate = 0.1f   // Update every 0.1 seconds
+stabilizationSmoothing = 2.0f    // Smooth interpolation
+maxAnchorDrift = 0.5f            // Max drift before snap
 ```
 
 ---
@@ -68,8 +71,8 @@ alignSmoothing = 0.2f            // Position smoothing
 ## 🐛 **Troubleshooting**
 
 ### **"Missing AMOConfig" Warning**
-- **Solution**: Use Setup Helper → "Create AMOConfig"
-- **Or**: Manually create AMOConfig asset in Resources folder
+- **Solution**: This is automatically resolved - AMOConfig is created automatically
+- **No Action Required**: The system handles this automatically
 
 ### **"Anchor Root" Field Shows "None"**
 - **This is Normal**: The system automatically creates/finds the AnchorRoot at runtime
@@ -83,6 +86,20 @@ alignSmoothing = 0.2f            // Position smoothing
 1. **Check Image Target Name**: Ensure it matches your Vuforia ImageTarget
 2. **Verify Photon Connection**: All clients must be in the same room
 3. **Test with Same Image**: Use the exact same physical image on all devices
+4. **Use Anchor Visualization**: Enable anchor center visualization to see the synchronization point
+
+### **Anchor Visualization Not Showing**
+1. **Check Toggle**: Ensure "Show Anchor Center" is enabled in Setup Helper
+2. **Verify Alignment**: Visualization only appears after Image Target is detected
+3. **Check Size**: Increase anchor center size if visualization is too small
+4. **Test Colors**: Try different colors to make visualization more visible
+
+### **Objects Drifting When Phone Moves**
+1. **Enable Stabilization**: Ensure "Enable Position Stabilization" is turned on
+2. **Check Update Rate**: Lower values (0.01-0.05s) provide more responsive tracking
+3. **Adjust Smoothing**: Higher values (3-5) provide smoother movement but slower response
+4. **Monitor Max Drift**: Increase if objects snap too frequently
+5. **Verify Image Target**: Ensure Image Target is clearly visible and well-lit
 
 ---
 
@@ -122,9 +139,7 @@ alignSmoothing = 0.2f            // Position smoothing
 ## 🚀 **Quick Start Checklist**
 
 - [ ] Add `AMOAutoBoot` script to any GameObject
-- [ ] (Optional) Use Setup Helper to create AMOConfig
-- [ ] (Optional) Set correct Image Target name in AMOConfig
 - [ ] Test with multiple devices using same image target
 - [ ] Verify objects appear in same position on all devices
 
-**That's it! The system is designed to be as automatic as possible.**
+**That's it! The system is designed to be completely automatic.**

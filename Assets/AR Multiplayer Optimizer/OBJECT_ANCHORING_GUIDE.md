@@ -42,19 +42,15 @@ Your virtual objects (red and blue cubes) were not synchronizing because they we
 
 ## 📋 **Setup Instructions**
 
-### **Option 1: Fully Automatic (Recommended)**
+### **Automatic Setup (Zero Configuration)**
 1. **Add AMOAutoBoot** to any GameObject in your scene
 2. **That's it!** All object anchoring happens automatically
 
-### **Option 2: Manual Setup**
-1. **Add AMOSessionManager** to a GameObject
-2. **Add AMOObjectAnchorer** to a GameObject (optional - auto-created)
-3. **Assign AMOConfig** asset
-
-### **Option 3: Individual Object Anchoring**
-1. **Add AMOObjectAnchor** component to specific objects
-2. **Configure local offsets** if needed
-3. **Objects will anchor automatically** when Image Target is detected
+The system will automatically:
+- Create AMOSessionManager with proper configuration
+- Add AMOObjectAnchorer component for object management
+- Create AMOConfig with sensible defaults
+- Handle all object anchoring and synchronization
 
 ## 🎮 **Configuration Options**
 

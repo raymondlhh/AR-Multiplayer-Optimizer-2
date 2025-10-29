@@ -14,6 +14,10 @@ public class AMOAnchorTracker : MonoBehaviour
 	private AMOConfig config;
 	private Transform anchorRoot;
 	private bool aligned;
+	private UnityEngine.Object currentObserver;
+	private Coroutine continuousTrackingCoroutine;
+	private Vector3 lastAnchorPosition;
+	private Quaternion lastAnchorRotation;
 
 	public void Initialize(AMOConfig amoConfig, Transform anchorRootTransform)
 	{
@@ -54,6 +58,16 @@ public class AMOAnchorTracker : MonoBehaviour
 
 		SnapAnchorRootToObserver(observer);
 		aligned = true;
+		currentObserver = observer;
+		lastAnchorPosition = anchorRoot.position;
+		lastAnchorRotation = anchorRoot.rotation;
+		
+		// Start continuous tracking if enabled
+		if (config.enablePositionStabilization)
+		{
+			StartContinuousTracking();
+		}
+		
 		onAlignedOnce?.Invoke();
 	}
 
@@ -140,6 +154,134 @@ public class AMOAnchorTracker : MonoBehaviour
 			return v as T;
 		}
 		return null;
+	}
+
+	/// <summary>
+	/// Starts continuous tracking to prevent object drift when phone moves
+	/// </summary>
+	private void StartContinuousTracking()
+	{
+		if (continuousTrackingCoroutine != null)
+		{
+			StopCoroutine(continuousTrackingCoroutine);
+		}
+		
+		continuousTrackingCoroutine = StartCoroutine(ContinuousTrackingLoop());
+		Debug.Log("[AMOAnchorTracker] [AUTOMATIC] Started continuous position stabilization");
+	}
+
+	/// <summary>
+	/// Stops continuous tracking
+	/// </summary>
+	private void StopContinuousTracking()
+	{
+		if (continuousTrackingCoroutine != null)
+		{
+			StopCoroutine(continuousTrackingCoroutine);
+			continuousTrackingCoroutine = null;
+			Debug.Log("[AMOAnchorTracker] [AUTOMATIC] Stopped continuous position stabilization");
+		}
+	}
+
+	/// <summary>
+	/// Continuous tracking loop that updates anchor position based on Image Target movement
+	/// </summary>
+	private IEnumerator ContinuousTrackingLoop()
+	{
+		while (aligned && currentObserver != null && config.enablePositionStabilization)
+		{
+			yield return new WaitForSeconds(config.stabilizationUpdateRate);
+			
+			if (IsObserverTracked(currentObserver))
+			{
+				UpdateAnchorPositionSmoothly();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Updates anchor position smoothly to prevent drift
+	/// </summary>
+	private void UpdateAnchorPositionSmoothly()
+	{
+		if (currentObserver == null || anchorRoot == null) return;
+
+		var observerTransform = GetFieldOrProperty<Transform>(currentObserver, "transform");
+		if (observerTransform == null) return;
+
+		Vector3 targetPosition = observerTransform.position;
+		Quaternion targetRotation = observerTransform.rotation;
+
+		// Check if the movement is too large (prevent large jumps)
+		float distance = Vector3.Distance(lastAnchorPosition, targetPosition);
+		if (distance > config.maxAnchorDrift)
+		{
+			// Snap to new position if movement is too large
+			Debug.Log($"[AMOAnchorTracker] [AUTOMATIC] Large movement detected ({distance:F2}m), snapping anchor");
+			anchorRoot.SetPositionAndRotation(targetPosition, targetRotation);
+			lastAnchorPosition = targetPosition;
+			lastAnchorRotation = targetRotation;
+		}
+		else
+		{
+			// Smooth interpolation for small movements
+			float smoothingFactor = config.stabilizationSmoothing * Time.deltaTime;
+			Vector3 smoothedPosition = Vector3.Lerp(anchorRoot.position, targetPosition, smoothingFactor);
+			Quaternion smoothedRotation = Quaternion.Lerp(anchorRoot.rotation, targetRotation, smoothingFactor);
+			
+			anchorRoot.SetPositionAndRotation(smoothedPosition, smoothedRotation);
+			lastAnchorPosition = smoothedPosition;
+			lastAnchorRotation = smoothedRotation;
+		}
+	}
+
+	/// <summary>
+	/// Public method to toggle stabilization on/off
+	/// </summary>
+	public void ToggleStabilization()
+	{
+		if (config != null)
+		{
+			config.enablePositionStabilization = !config.enablePositionStabilization;
+			
+			if (config.enablePositionStabilization && aligned)
+			{
+				StartContinuousTracking();
+			}
+			else
+			{
+				StopContinuousTracking();
+			}
+			
+			Debug.Log($"[AMOAnchorTracker] Position stabilization {(config.enablePositionStabilization ? "enabled" : "disabled")}");
+		}
+	}
+
+	/// <summary>
+	/// Public method to set stabilization enabled/disabled
+	/// </summary>
+	public void SetStabilization(bool enabled)
+	{
+		if (config != null)
+		{
+			config.enablePositionStabilization = enabled;
+			
+			if (enabled && aligned)
+			{
+				StartContinuousTracking();
+			}
+			else
+			{
+				StopContinuousTracking();
+			}
+			
+			Debug.Log($"[AMOAnchorTracker] Position stabilization {(enabled ? "enabled" : "disabled")}");
+		}
+	}
+
+	private void OnDestroy()
+	{
+		StopContinuousTracking();
 	}
 }
 
