@@ -2,6 +2,7 @@ using UnityEngine;
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 using Photon.Pun;
+using Photon.Realtime;
 #endif
 
 /// <summary>
@@ -21,14 +22,19 @@ public class AMOObjectPositionSync : MonoBehaviour, IPunObservable
     private Quaternion networkRotation;
     private bool isLocalObject = true;
     private Transform anchorRoot;
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+    private PhotonView photonView;
+#endif
     
     private void Start()
     {
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
-        var photonView = GetComponent<PhotonView>();
+        photonView = GetComponent<PhotonView>();
         if (photonView != null)
         {
             isLocalObject = photonView.IsMine;
+            networkPosition = transform.localPosition;
+            networkRotation = transform.localRotation;
         }
 #endif
         
@@ -125,4 +131,51 @@ public class AMOObjectPositionSync : MonoBehaviour, IPunObservable
         transform.localRotation = localRot;
         ForcePositionUpdate();
     }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+    public void BroadcastStateToOthers()
+    {
+        if (!isLocalObject || photonView == null || !PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
+            return;
+
+        photonView.RPC(nameof(RPC_ReceiveState), RpcTarget.OthersBuffered, transform.localPosition, transform.localRotation);
+    }
+
+    public void SendStateToPlayer(Player targetPlayer)
+    {
+        if (!isLocalObject || photonView == null || targetPlayer == null)
+            return;
+
+        photonView.RPC(nameof(RPC_ReceiveState), targetPlayer, transform.localPosition, transform.localRotation);
+    }
+
+    public void RequestStateFromOwner()
+    {
+        if (photonView == null || photonView.Owner == null)
+            return;
+
+        photonView.RPC(nameof(RPC_RequestState), photonView.Owner);
+    }
+
+    [PunRPC]
+    private void RPC_RequestState(PhotonMessageInfo info)
+    {
+        if (!isLocalObject || photonView == null)
+            return;
+
+        photonView.RPC(nameof(RPC_ReceiveState), info.Sender, transform.localPosition, transform.localRotation);
+    }
+
+    [PunRPC]
+    private void RPC_ReceiveState(Vector3 localPos, Quaternion localRot)
+    {
+        if (isLocalObject)
+            return;
+
+        networkPosition = localPos;
+        networkRotation = localRot;
+        transform.localPosition = localPos;
+        transform.localRotation = localRot;
+    }
+#endif
 }
