@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
@@ -20,27 +19,11 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     
     private Vector3 networkPosition;
     private Quaternion networkRotation;
-    private Vector3 networkLocalPosition;
-    private Quaternion networkLocalRotation;
-    private Vector3 pendingLocalPosition;
-    private Quaternion pendingLocalRotation;
-    private bool hasPendingLocalData;
     private bool isLocalPlayer;
-    private Transform anchorRoot;
-
-    private void Awake()
-    {
-        networkPosition = transform.position;
-        networkRotation = transform.rotation;
-        networkLocalPosition = transform.localPosition;
-        networkLocalRotation = transform.localRotation;
-    }
     
     void Start()
     {
         isLocalPlayer = photonView.IsMine;
-
-        TryAssignAnchorRoot();
         
         if (isLocalPlayer)
         {
@@ -67,9 +50,6 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     
     void Update()
     {
-        TryAssignAnchorRoot();
-        EnsureParentedToAnchor();
-
         if (isLocalPlayer)
         {
             HandleInput();
@@ -77,16 +57,8 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         else
         {
             // Smooth interpolation for remote players
-            if (anchorRoot != null)
-            {
-                transform.localPosition = Vector3.Lerp(transform.localPosition, networkLocalPosition, Time.deltaTime * 10f);
-                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkLocalRotation, Time.deltaTime * 10f);
-            }
-            else
-            {
-                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
-                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
-            }
+            transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
+            transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
         }
     }
     
@@ -190,40 +162,14 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         if (stream.IsWriting)
         {
             // We own this player: send the others our data
-            Vector3 positionToSend = transform.position;
-            Quaternion rotationToSend = transform.rotation;
-
-            if (anchorRoot != null)
-            {
-                positionToSend = transform.localPosition;
-                rotationToSend = transform.localRotation;
-            }
-
-            stream.SendNext(positionToSend);
-            stream.SendNext(rotationToSend);
+            stream.SendNext(transform.position);
+            stream.SendNext(transform.rotation);
         }
         else
         {
             // Network player, receive data
-            Vector3 receivedPosition = (Vector3)stream.ReceiveNext();
-            Quaternion receivedRotation = (Quaternion)stream.ReceiveNext();
-
-            if (anchorRoot != null)
-            {
-                networkLocalPosition = receivedPosition;
-                networkLocalRotation = receivedRotation;
-                networkPosition = anchorRoot.TransformPoint(networkLocalPosition);
-                networkRotation = anchorRoot.rotation * networkLocalRotation;
-            }
-            else
-            {
-                pendingLocalPosition = receivedPosition;
-                pendingLocalRotation = receivedRotation;
-                hasPendingLocalData = true;
-
-                networkPosition = receivedPosition;
-                networkRotation = receivedRotation;
-            }
+            networkPosition = (Vector3)stream.ReceiveNext();
+            networkRotation = (Quaternion)stream.ReceiveNext();
         }
     }
     
@@ -243,70 +189,5 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         Debug.Log("Player " + otherPlayer.NickName + " left the room");
-    }
-
-    private void TryAssignAnchorRoot()
-    {
-        if (anchorRoot != null)
-            return;
-
-        if (AMOSessionManager.Instance != null)
-        {
-            var anchorField = typeof(AMOSessionManager).GetField("anchorRoot", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (anchorField != null)
-            {
-                var resolvedAnchor = anchorField.GetValue(AMOSessionManager.Instance) as Transform;
-                if (resolvedAnchor != null)
-                {
-                    anchorRoot = resolvedAnchor;
-                    OnAnchorRootAssigned();
-                    return;
-                }
-            }
-        }
-
-        var anchorRootObject = GameObject.Find("AnchorRoot");
-        if (anchorRootObject != null)
-        {
-            anchorRoot = anchorRootObject.transform;
-            OnAnchorRootAssigned();
-        }
-    }
-
-    private void EnsureParentedToAnchor()
-    {
-        if (anchorRoot == null)
-            return;
-
-        if (transform.parent != anchorRoot)
-        {
-            transform.SetParent(anchorRoot, true);
-        }
-    }
-
-    private void OnAnchorRootAssigned()
-    {
-        EnsureParentedToAnchor();
-
-        if (isLocalPlayer)
-            return;
-
-        if (hasPendingLocalData)
-        {
-            networkLocalPosition = pendingLocalPosition;
-            networkLocalRotation = pendingLocalRotation;
-            hasPendingLocalData = false;
-        }
-        else
-        {
-            networkLocalPosition = transform.localPosition;
-            networkLocalRotation = transform.localRotation;
-        }
-
-        networkPosition = anchorRoot.TransformPoint(networkLocalPosition);
-        networkRotation = anchorRoot.rotation * networkLocalRotation;
-
-        transform.localPosition = networkLocalPosition;
-        transform.localRotation = networkLocalRotation;
     }
 }
