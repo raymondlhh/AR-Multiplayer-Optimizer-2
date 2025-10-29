@@ -4,36 +4,49 @@ using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
 
-public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
+public partial class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
 {
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float rotationSpeed = 100f;
-    
+
     [Header("Joystick Controls")]
     [SerializeField] private Joystick movementJoystick;
-    
+
     [Header("Player Info")]
     [SerializeField] private string playerName = "Player";
     [SerializeField] private Color playerColor = Color.white;
-    
+
     private Vector3 networkPosition;
     private Quaternion networkRotation;
     private bool isLocalPlayer;
-    
+
+    partial void AMO_OnAwake();
+    partial void AMO_OnStart();
+    partial void AMO_OnUpdate();
+    partial void AMO_HandleRemoteUpdate(ref bool handled);
+    partial void AMO_OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info, ref bool handled);
+
+    private void Awake()
+    {
+        AMO_OnAwake();
+    }
+
     void Start()
     {
         isLocalPlayer = photonView.IsMine;
-        
+
+        AMO_OnStart();
+
         if (isLocalPlayer)
         {
             // Set up local player
             playerName = "Player " + PhotonNetwork.LocalPlayer.ActorNumber;
             SetPlayerColor();
-            
+
             // Add camera follow for local player
             //SetupCamera();
-            
+
             // Auto-find joystick if not assigned
             AutoFindJoystick();
         }
@@ -43,25 +56,32 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             playerName = "Player " + photonView.Owner.ActorNumber;
             SetPlayerColor();
         }
-        
+
         // Set player name
         gameObject.name = playerName;
     }
-    
+
     void Update()
     {
+        AMO_OnUpdate();
+
         if (isLocalPlayer)
         {
             HandleInput();
         }
         else
         {
-            // Smooth interpolation for remote players
-            transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
-            transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+            bool handled = false;
+            AMO_HandleRemoteUpdate(ref handled);
+            if (!handled)
+            {
+                // Smooth interpolation for remote players
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
+                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+            }
         }
     }
-    
+
     void HandleInput()
     {
         // Movement input from joystick
@@ -69,7 +89,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         {
             float horizontal = movementJoystick.Horizontal;
             float vertical = movementJoystick.Vertical;
-            
+
             Vector3 movement = new Vector3(horizontal, 0, vertical) * moveSpeed * Time.deltaTime;
             transform.Translate(movement, Space.World);
         }
@@ -78,11 +98,11 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             // Fallback to keyboard input if joystick is not assigned
             float horizontal = Input.GetAxis("Horizontal");
             float vertical = Input.GetAxis("Vertical");
-            
+
             Vector3 movement = new Vector3(horizontal, 0, vertical) * moveSpeed * Time.deltaTime;
             transform.Translate(movement, Space.World);
         }
-        
+
         // Rotation input (keyboard only)
         if (Input.GetKey(KeyCode.Q))
         {
@@ -92,14 +112,14 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         {
             transform.Rotate(0, rotationSpeed * Time.deltaTime, 0);
         }
-        
+
         // Jump input (keyboard only)
         if (Input.GetKeyDown(KeyCode.Space))
         {
             Jump();
         }
     }
-    
+
     void Jump()
     {
         // Simple jump implementation
@@ -109,22 +129,22 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             rb.AddForce(Vector3.up * 5f, ForceMode.Impulse);
         }
     }
-    
+
     void SetPlayerColor()
     {
         // Set different colors for different players
         Renderer[] renderers = GetComponentsInChildren<Renderer>();
         Color[] colors = { Color.red, Color.blue, Color.green, Color.yellow };
-        
+
         int playerIndex = (photonView.Owner.ActorNumber - 1) % colors.Length;
         playerColor = colors[playerIndex];
-        
+
         foreach (Renderer renderer in renderers)
         {
             renderer.material.color = playerColor;
         }
     }
-    
+
     void SetupCamera()
     {
         // Find main camera and make it follow this player
@@ -137,7 +157,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             mainCamera.transform.LookAt(transform);
         }
     }
-    
+
     void AutoFindJoystick()
     {
         // Auto-find joystick if not manually assigned
@@ -156,9 +176,16 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             }
         }
     }
-    
+
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
     {
+        bool handled = false;
+        AMO_OnPhotonSerializeView(stream, info, ref handled);
+        if (handled)
+        {
+            return;
+        }
+
         if (stream.IsWriting)
         {
             // We own this player: send the others our data
@@ -172,7 +199,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             networkRotation = (Quaternion)stream.ReceiveNext();
         }
     }
-    
+
     void OnTriggerEnter(Collider other)
     {
         if (isLocalPlayer)
@@ -180,12 +207,12 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             Debug.Log(playerName + " collided with " + other.name);
         }
     }
-    
+
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
         Debug.Log("Player " + newPlayer.NickName + " entered the room");
     }
-    
+
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         Debug.Log("Player " + otherPlayer.NickName + " left the room");
