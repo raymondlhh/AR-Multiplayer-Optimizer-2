@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QCARConfig>
+    <Tracking>
+        <CylinderTarget name="Cylinder" sideLength="11.000000"/>
+        <ImageTarget name="TissueBox.Front" size="9.500000 15.009294"/>
+        <ImageTarget name="TissueBox.Right" size="5.000000 14.964788"/>
+        <ImageTarget name="TissueBox.Back" size="9.500000 15.009294"/>
+        <ImageTarget name="TissueBox.Left" size="5.000000 14.964788"/>
+        <MultiTarget name="TissueBox">
+            <Part name="TissueBox.Left" translation="-4.75 0 0" rotation="AD: 0 1 0 -90"/>
+            <Part name="TissueBox.Right" translation="4.75 0 0" rotation="AD: 0 1 0 90"/>
+            <Part name="TissueBox.Front" translation="0 0 2.5" rotation="AD: 1 0 0 0"/>
+            <Part name="TissueBox.Back" translation="0 0 -2.5" rotation="AD: 0 1 0 180"/>
+        </MultiTarget>
+    </Tracking>
+</QCARConfig>
