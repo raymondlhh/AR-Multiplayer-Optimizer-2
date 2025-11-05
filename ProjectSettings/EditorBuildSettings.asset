@@ -6,6 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/_AssetsRaymond/Scenes/MainScene.unity
+    path: Assets/AR Multiplayer Optimizer/Demo/Scenes/Demo.unity
     guid: f796071e9b36f9c4abafbad9e5e606e7
   m_configObjects: {}
