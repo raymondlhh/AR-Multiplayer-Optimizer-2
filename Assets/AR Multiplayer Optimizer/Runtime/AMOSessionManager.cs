@@ -36,7 +36,12 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
         private readonly HashSet<int> alignedActors = new HashSet<int>();
         private int anchorAuthorityActorNumber = -1;
+        private bool awaitingAuthoritativeAnchor;
 #endif
+
+        private System.Type cachedPlayerControllerType;
+
+        private bool hasBroadcastLocalAlignment;
 
 	private void Awake()
 	{
@@ -301,26 +306,25 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		}
 	}
 
-	private void HandleLocalAligned()
-	{
-		IsAligned = true;
-		
-		// Automatically anchor all virtual objects to Image Target center
-		AnchorAllVirtualObjects();
-		
-		// Start continuous synchronization
-		StartContinuousSync();
-		
-		// Update visualization when aligned
-		EnsureAnchorVisualization();
-		BroadcastAnchoredObjectStates();
+        private void HandleLocalAligned()
+        {
+                hasBroadcastLocalAlignment = false;
+                IsAligned = true;
+
+                // Automatically anchor all virtual objects to Image Target center
+                AnchorAllVirtualObjects();
+
+                // Start continuous synchronization
+                StartContinuousSync();
+
+                // Update visualization when aligned
+                EnsureAnchorVisualization();
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
-                // Mark self ready and check if all are ready.
-                if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom)
-                {
-                        alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
+                awaitingAuthoritativeAnchor = false;
 
+                if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && PhotonNetwork.LocalPlayer != null)
+                {
                         if (TryClaimAnchorAuthority())
                         {
                                 anchorAuthorityActorNumber = PhotonNetwork.LocalPlayer.ActorNumber;
@@ -337,11 +341,38 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
                                 // Send multiple times to ensure reliability
                                 StartCoroutine(SendMultipleSyncUpdates());
 
-                                photonView.RPC(nameof(RPC_RemoteAligned), RpcTarget.OthersBuffered, PhotonNetwork.LocalPlayer.ActorNumber);
+                                CompleteLocalAlignment(broadcastObjects: true);
                         }
                         else
                         {
+                                awaitingAuthoritativeAnchor = true;
                                 RequestAnchorPositionFromOthers();
+                        }
+
+                        return;
+                }
+#endif
+
+                CompleteLocalAlignment(broadcastObjects: true);
+        }
+
+        private void CompleteLocalAlignment(bool broadcastObjects)
+        {
+                if (broadcastObjects)
+                {
+                        BroadcastAnchoredObjectStates();
+                }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+                if (PhotonNetwork.IsConnected && PhotonNetwork.InRoom && PhotonNetwork.LocalPlayer != null)
+                {
+                        alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
+
+                        if (!hasBroadcastLocalAlignment)
+                        {
+                                hasBroadcastLocalAlignment = true;
+                                PhotonView photonView = GetOrCreatePhotonView();
+                                photonView.RPC(nameof(RPC_RemoteAligned), RpcTarget.OthersBuffered, PhotonNetwork.LocalPlayer.ActorNumber);
                         }
 
                         CheckAllReady();
@@ -349,65 +380,93 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 #endif
         }
 
+        public void HandleJoinedRoom()
+        {
+                hasBroadcastLocalAlignment = false;
+                IsAligned = false;
+
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
-	[PunRPC]
+                awaitingAuthoritativeAnchor = false;
+                anchorAuthorityActorNumber = -1;
+                alignedActors.Clear();
+#endif
+
+                CancelInvoke(nameof(SendPeriodicAnchorSync));
+                CancelInvoke(nameof(EnsureObjectsAnchored));
+        }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+        [PunRPC]
         private void RPC_SyncAnchorRoot(Vector3 position, Quaternion rotation, PhotonMessageInfo info)
         {
-                // Apply anchor root sync if we haven't aligned locally yet OR if this is a better position
-                if (anchorRoot != null)
+                if (anchorRoot == null)
+                        return;
+
+                int senderActorNumber = info.Sender != null ? info.Sender.ActorNumber : -1;
+
+                if (anchorAuthorityActorNumber != -1 && senderActorNumber != -1 && senderActorNumber != anchorAuthorityActorNumber)
                 {
-                        if (anchorAuthorityActorNumber != -1 && info.Sender != null && info.Sender.ActorNumber != anchorAuthorityActorNumber)
-                        {
-                                Debug.Log($"[AMOSession] Ignoring anchor sync from non-authoritative actor {info.Sender.ActorNumber}");
-                                return;
-                        }
+                        Debug.Log($"[AMOSession] Ignoring anchor sync from non-authoritative actor {senderActorNumber}");
+                        return;
+                }
 
-                        if (info.Sender != null)
-                        {
-                                anchorAuthorityActorNumber = info.Sender.ActorNumber;
-                        }
+                if (senderActorNumber != -1)
+                {
+                        anchorAuthorityActorNumber = senderActorNumber;
+                }
 
-                        // If we're not aligned yet, use this position
-                        if (!IsAligned)
+                bool localIsAuthority = IsLocalAnchorAuthority();
+                bool senderIsAuthority = senderActorNumber != -1 && senderActorNumber == anchorAuthorityActorNumber;
+
+                bool shouldCompleteAlignment = false;
+
+                if (!IsAligned)
+                {
+                        Debug.Log($"[AMOSession] Syncing anchor root from remote client {senderActorNumber}: {position}");
+                        anchorRoot.SetPositionAndRotation(position, rotation);
+
+                        IsAligned = true;
+
+                        AnchorAllVirtualObjects();
+                        StartContinuousSync();
+                        EnsureAnchorVisualization();
+
+                        awaitingAuthoritativeAnchor = false;
+                        shouldCompleteAlignment = true;
+                }
+                else
+                {
+                        float distance = Vector3.Distance(anchorRoot.position, position);
+                        float angle = Quaternion.Angle(anchorRoot.rotation, rotation);
+
+                        if ((!localIsAuthority && senderIsAuthority) || distance > 0.1f || angle > 2f)
                         {
-                                Debug.Log($"[AMOSession] Syncing anchor root from remote client {info.Sender.ActorNumber}: {position}");
+                                Debug.Log($"[AMOSession] Updating anchor root to match remote client {senderActorNumber}: {position} (distance: {distance:F2}m, angle: {angle:F1}°)");
                                 anchorRoot.SetPositionAndRotation(position, rotation);
-				
-				// Mark as aligned since we received the anchor position
-				IsAligned = true;
-				
-				// Automatically anchor all virtual objects to Image Target center
-				AnchorAllVirtualObjects();
-				
-				// Start continuous synchronization
-				StartContinuousSync();
-				
-				// Update visualization
-				EnsureAnchorVisualization();
-				BroadcastAnchoredObjectStates();
-				
-				alignedActors.Add(PhotonNetwork.LocalPlayer.ActorNumber);
-				CheckAllReady();
-			}
+
+                                AnchorAllVirtualObjects();
+
+                                if (!localIsAuthority && senderIsAuthority)
+                                {
+                                        shouldCompleteAlignment = awaitingAuthoritativeAnchor || !hasBroadcastLocalAlignment;
+                                        awaitingAuthoritativeAnchor = false;
+                                }
+                        }
                         else
                         {
-                                bool senderIsAuthority = info.Sender != null && info.Sender.ActorNumber == anchorAuthorityActorNumber;
-                                bool localIsAuthority = IsLocalAnchorAuthority();
-                                float distance = Vector3.Distance(anchorRoot.position, position);
-                                float angle = Quaternion.Angle(anchorRoot.rotation, rotation);
+                                return;
+                        }
+                }
 
-                                if ((!localIsAuthority && senderIsAuthority) || distance > 0.1f || angle > 2f)
-                                {
-                                        Debug.Log($"[AMOSession] Updating anchor root to match remote client {info.Sender.ActorNumber}: {position} (distance: {distance:F2}m)");
-                                        anchorRoot.SetPositionAndRotation(position, rotation);
-
-                                        // Re-anchor all objects to the new position
-					AnchorAllVirtualObjects();
-					BroadcastAnchoredObjectStates();
-				}
-			}
-		}
-	}
+                if (shouldCompleteAlignment)
+                {
+                        CompleteLocalAlignment(broadcastObjects: true);
+                }
+                else
+                {
+                        BroadcastAnchoredObjectStates();
+                }
+        }
 
 	[PunRPC]
 	private void RPC_RemoteAligned(int actorNumber, PhotonMessageInfo _)
@@ -500,9 +559,32 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	/// <summary>
 	/// [AUTOMATIC] Anchors all virtual objects to the Image Target center for proper synchronization
 	/// </summary>
+	private System.Type GetPlayerControllerType()
+        {
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+                if (cachedPlayerControllerType != null)
+                        return cachedPlayerControllerType;
+
+                cachedPlayerControllerType = System.Type.GetType("PlayerController");
+                if (cachedPlayerControllerType != null)
+                        return cachedPlayerControllerType;
+
+                foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                        cachedPlayerControllerType = assembly.GetType("PlayerController");
+                        if (cachedPlayerControllerType != null)
+                                break;
+                }
+
+                return cachedPlayerControllerType;
+#else
+                return null;
+#endif
+        }
+
 	private void AnchorAllVirtualObjects()
-	{
-		Debug.Log("[AMOSession] [AUTOMATIC] Anchoring all virtual objects to Image Target center...");
+        {
+                Debug.Log("[AMOSession] [AUTOMATIC] Anchoring all virtual objects to Image Target center...");
 		
 		// Find and anchor all objects with common virtual object names
 		string[] objectNames = { "Cube", "Player", "VirtualObject", "ARObject" };
@@ -564,11 +646,14 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			obj.transform.localRotation = localRot;
 		}
 		
-		// Add PhotonView for individual object synchronization if not present
-		EnsureObjectSynchronization(obj);
-		
-		Debug.Log($"[AMOSession] [AUTOMATIC] Anchored {obj.name} to Image Target center");
-	}
+                // Add PhotonView for individual object synchronization if not present
+                EnsureObjectSynchronization(obj);
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+                EnsurePlayerControllerCompatibility(obj);
+#endif
+
+                Debug.Log($"[AMOSession] [AUTOMATIC] Anchored {obj.name} to Image Target center");
+        }
 	
 	/// <summary>
 	/// Starts continuous synchronization to maintain consistent positions
@@ -724,10 +809,10 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	/// Ensures individual objects have proper Photon synchronization
 	/// </summary>
 	private void EnsureObjectSynchronization(GameObject obj)
-	{
+        {
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
-		var photonView = obj.GetComponent<PhotonView>();
-		if (photonView == null)
+                var photonView = obj.GetComponent<PhotonView>();
+                if (photonView == null)
 		{
 			photonView = obj.AddComponent<PhotonView>();
 			photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
@@ -745,17 +830,53 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 		{
 			photonView.ObservedComponents = new System.Collections.Generic.List<Component>();
 		}
-		if (!photonView.ObservedComponents.Contains(positionSync))
-		{
-			photonView.ObservedComponents.Add(positionSync);
-		}
-		photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
+                if (!photonView.ObservedComponents.Contains(positionSync))
+                {
+                        photonView.ObservedComponents.Add(positionSync);
+                }
+                photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
 #endif
-	}
+        }
 
-	/// <summary>
-	/// Sends periodic anchor synchronization to keep all players aligned
-	/// </summary>
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+	private void EnsurePlayerControllerCompatibility(GameObject obj)
+        {
+                var photonView = obj.GetComponent<PhotonView>();
+                if (photonView == null)
+                        return;
+
+                var playerControllerType = GetPlayerControllerType();
+                if (playerControllerType == null)
+                        return;
+
+                var playerController = obj.GetComponent(playerControllerType);
+                if (playerController == null)
+                        return;
+
+                if (photonView.ObservedComponents == null)
+                {
+                        photonView.ObservedComponents = new System.Collections.Generic.List<Component>();
+                }
+
+                if (photonView.ObservedComponents.Contains(playerController))
+                {
+                        photonView.ObservedComponents.Remove(playerController);
+                        Debug.Log($"[AMOSession] [AUTOMATIC] Redirected PhotonView sync from PlayerController on {obj.name} to AMOObjectPositionSync");
+                }
+
+                var fixup = obj.GetComponent<AMOPlayerRuntimeFixup>();
+                if (fixup == null)
+                {
+                        fixup = obj.AddComponent<AMOPlayerRuntimeFixup>();
+                }
+
+                fixup.Initialize(playerController);
+        }
+#endif
+
+        /// <summary>
+        /// Sends periodic anchor synchronization to keep all players aligned
+        /// </summary>
         private void SendPeriodicAnchorSync()
         {
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
@@ -923,15 +1044,22 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			Quaternion receivedRotation = (Quaternion)stream.ReceiveNext();
 			bool receivedAligned = (bool)stream.ReceiveNext();
 			
-			// Only apply if we haven't aligned locally and received valid data
-			if (!IsAligned && anchorRoot != null && receivedAligned)
-			{
-				Debug.Log($"[AMOSession] Syncing anchor root from stream: {receivedPosition}");
-				anchorRoot.SetPositionAndRotation(receivedPosition, receivedRotation);
-				IsAligned = true;
-			}
-		}
-	}
+                        // Only apply if we haven't aligned locally and received valid data
+                        if (!IsAligned && anchorRoot != null && receivedAligned)
+                        {
+                                Debug.Log($"[AMOSession] Syncing anchor root from stream: {receivedPosition}");
+                                anchorRoot.SetPositionAndRotation(receivedPosition, receivedRotation);
+                                IsAligned = true;
+
+                                AnchorAllVirtualObjects();
+                                StartContinuousSync();
+                                EnsureAnchorVisualization();
+
+                                awaitingAuthoritativeAnchor = false;
+                                CompleteLocalAlignment(broadcastObjects: true);
+                        }
+                }
+        }
 #endif
 
 	/// <summary>
