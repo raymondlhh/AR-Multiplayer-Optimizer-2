@@ -90,6 +90,7 @@ public class AMONetworkManager : MonoBehaviour
             if (sessionManager != null)
             {
                 Debug.Log("[AMONetworkManager] Notifying AMOSessionManager of room join");
+                sessionManager.HandleJoinedRoom();
             }
         }
     }
