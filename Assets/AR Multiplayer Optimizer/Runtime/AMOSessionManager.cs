@@ -445,16 +445,24 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			}
 		}
 		
-		// Find and anchor all objects with common virtual object tags
-		string[] tags = { "Player", "VirtualObject", "ARObject" };
-		foreach (string tag in tags)
-		{
-			GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
-			foreach (GameObject obj in objects)
-			{
-				AnchorObjectToImageTarget(obj);
-			}
-		}
+                // Find and anchor all objects with common virtual object tags
+                string[] tags = { "Player", "VirtualObject", "ARObject" };
+                foreach (string tag in tags)
+                {
+                        GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
+                        foreach (GameObject obj in objects)
+                        {
+                                AnchorObjectToImageTarget(obj);
+                        }
+                }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+                // Also anchor any Photon networked objects to guarantee shared alignment
+                foreach (GameObject photonObject in FindPhotonNetworkObjects())
+                {
+                        AnchorObjectToImageTarget(photonObject);
+                }
+#endif
 		
 		Debug.Log("[AMOSession] [AUTOMATIC] Virtual objects anchored to Image Target center");
 	}
@@ -530,26 +538,37 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 			}
 		}
 		
-		// Check objects by tags
-		string[] tags = { "Player", "VirtualObject", "ARObject" };
-		foreach (string tag in tags)
-		{
-			GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
-			foreach (GameObject obj in objects)
-			{
-				if (obj != null && obj.transform.parent != anchorRoot)
-				{
-					Debug.Log($"[AMOSession] [AUTOMATIC] Re-anchoring {obj.name} to Image Target center");
-					AnchorObjectToImageTarget(obj);
-				}
-			}
-		}
+                // Check objects by tags
+                string[] tags = { "Player", "VirtualObject", "ARObject" };
+                foreach (string tag in tags)
+                {
+                        GameObject[] objects = GameObject.FindGameObjectsWithTag(tag);
+                        foreach (GameObject obj in objects)
+                        {
+                                if (obj != null && obj.transform.parent != anchorRoot)
+                                {
+                                        Debug.Log($"[AMOSession] [AUTOMATIC] Re-anchoring {obj.name} to Image Target center");
+                                        AnchorObjectToImageTarget(obj);
+                                }
+                        }
+                }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+                foreach (GameObject photonObject in FindPhotonNetworkObjects())
+                {
+                        if (photonObject != null && photonObject.transform.parent != anchorRoot)
+                        {
+                                Debug.Log($"[AMOSession] [AUTOMATIC] Re-anchoring networked object {photonObject.name} to Image Target center");
+                                AnchorObjectToImageTarget(photonObject);
+                        }
+                }
+#endif
 	}
 
-	private static IEnumerable<GameObject> FindObjectsByName(string targetName)
-	{
-		if (string.IsNullOrEmpty(targetName))
-			yield break;
+        private static IEnumerable<GameObject> FindObjectsByName(string targetName)
+        {
+                if (string.IsNullOrEmpty(targetName))
+                        yield break;
 
 		Transform[] allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
 		foreach (Transform transform in allTransforms)
@@ -572,7 +591,36 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 				yield return gameObject;
 			}
 		}
-	}
+        }
+
+#if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
+        private static IEnumerable<GameObject> FindPhotonNetworkObjects()
+        {
+                var photonViews = GameObject.FindObjectsOfType<PhotonView>();
+                foreach (var view in photonViews)
+                {
+                        if (view == null)
+                                continue;
+
+                        var go = view.gameObject;
+                        if (go == null)
+                                continue;
+
+                        // Ignore objects that are part of the AMO session system itself
+                        if (go.GetComponent<AMOSessionManager>() != null)
+                                continue;
+
+                        // Skip the anchor root container
+                        if (go.transform == AMOSessionManager.Instance?.anchorRoot)
+                                continue;
+
+                        if (!go.scene.IsValid())
+                                continue;
+
+                        yield return go;
+                }
+        }
+#endif
 
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 	private void BroadcastAnchoredObjectStates()
