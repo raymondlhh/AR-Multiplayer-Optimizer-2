@@ -810,36 +810,28 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	/// <summary>
 	/// Ensures individual objects have proper Photon synchronization
 	/// </summary>
-        private void EnsureObjectSynchronization(GameObject obj)
+	private void EnsureObjectSynchronization(GameObject obj)
         {
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
                 var photonView = obj.GetComponent<PhotonView>();
                 if (photonView == null)
-                {
-                        photonView = obj.AddComponent<PhotonView>();
-                        photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
-                        Debug.Log($"[AMOSession] [AUTOMATIC] Added PhotonView to {obj.name} for synchronization");
-                }
+		{
+			photonView = obj.AddComponent<PhotonView>();
+			photonView.Synchronization = ViewSynchronization.UnreliableOnChange;
+			Debug.Log($"[AMOSession] [AUTOMATIC] Added PhotonView to {obj.name} for synchronization");
+		}
+		
+		// Ensure AMOObjectPositionSync exists and is registered with the PhotonView
+		var positionSync = obj.GetComponent<AMOObjectPositionSync>();
+		if (positionSync == null)
+		{
+			positionSync = obj.AddComponent<AMOObjectPositionSync>();
+		}
 
-                var playerControllerType = GetPlayerControllerType();
-                bool hasPlayerController = playerControllerType != null && obj.GetComponent(playerControllerType) != null;
-                if (hasPlayerController)
-                {
-                        // Let PlayerController drive its own Photon serialization path.
-                        return;
-                }
-
-                // Ensure AMOObjectPositionSync exists and is registered with the PhotonView
-                var positionSync = obj.GetComponent<AMOObjectPositionSync>();
-                if (positionSync == null)
-                {
-                        positionSync = obj.AddComponent<AMOObjectPositionSync>();
-                }
-
-                if (photonView.ObservedComponents == null)
-                {
-                        photonView.ObservedComponents = new System.Collections.Generic.List<Component>();
-                }
+		if (photonView.ObservedComponents == null)
+		{
+			photonView.ObservedComponents = new System.Collections.Generic.List<Component>();
+		}
                 if (!photonView.ObservedComponents.Contains(positionSync))
                 {
                         photonView.ObservedComponents.Add(positionSync);
@@ -863,18 +855,15 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
                 if (playerController == null)
                         return;
 
-                var controllerComponent = playerController as Component;
-                if (controllerComponent == null)
-                        return;
-
                 if (photonView.ObservedComponents == null)
                 {
                         photonView.ObservedComponents = new System.Collections.Generic.List<Component>();
                 }
 
-                if (!photonView.ObservedComponents.Contains(controllerComponent))
+                if (photonView.ObservedComponents.Contains(playerController))
                 {
-                        photonView.ObservedComponents.Add(controllerComponent);
+                        photonView.ObservedComponents.Remove(playerController);
+                        Debug.Log($"[AMOSession] [AUTOMATIC] Redirected PhotonView sync from PlayerController on {obj.name} to AMOObjectPositionSync");
                 }
 
                 var fixup = obj.GetComponent<AMOPlayerRuntimeFixup>();
@@ -883,7 +872,7 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
                         fixup = obj.AddComponent<AMOPlayerRuntimeFixup>();
                 }
 
-                fixup.Initialize(controllerComponent);
+                fixup.Initialize(playerController);
         }
 #endif
 

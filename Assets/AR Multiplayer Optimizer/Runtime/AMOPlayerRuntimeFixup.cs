@@ -5,9 +5,9 @@ using Photon.Pun;
 #endif
 
 /// <summary>
-/// [AUTOMATIC] Keeps demo PlayerController scripts compatible with AMO's anchor-relative sync.
-/// The fixup simply mirrors Photon ownership into the controller's private isLocal flag while leaving
-/// the behaviour enabled so its interpolation logic continues to run for remote players.
+/// [AUTOMATIC] Ensures demo PlayerController scripts defer to AMOObjectPositionSync for network transforms.
+/// The fixup disables remote PlayerController updates, keeps local control intact, and normalizes
+/// the private synchronization fields so AMO's anchor-relative replication drives the visuals.
 /// </summary>
 #if PUN_2_OR_NEWER || PHOTON_UNITY_NETWORKING
 public class AMOPlayerRuntimeFixup : MonoBehaviour
@@ -16,6 +16,8 @@ public class AMOPlayerRuntimeFixup : MonoBehaviour
         private Component playerControllerComponent;
         private System.Type playerControllerType;
         private FieldInfo isLocalPlayerField;
+        private FieldInfo networkPositionField;
+        private FieldInfo networkRotationField;
         private bool cachedIsMine;
         private bool attemptedDiscovery;
 
@@ -24,7 +26,7 @@ public class AMOPlayerRuntimeFixup : MonoBehaviour
                 playerControllerComponent = controller;
                 playerControllerType = controller != null ? controller.GetType() : null;
                 CacheReflectionFields();
-                ApplyState();
+                ApplyState(true);
         }
 
         private void Awake()
@@ -44,7 +46,7 @@ public class AMOPlayerRuntimeFixup : MonoBehaviour
                         CacheReflectionFields();
                 }
 
-                ApplyState();
+                ApplyState(true);
         }
 
         private void DiscoverController()
@@ -82,6 +84,8 @@ public class AMOPlayerRuntimeFixup : MonoBehaviour
 
                 const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
                 isLocalPlayerField = playerControllerType.GetField("isLocalPlayer", flags);
+                networkPositionField = playerControllerType.GetField("networkPosition", flags);
+                networkRotationField = playerControllerType.GetField("networkRotation", flags);
         }
 
         private void Update()
@@ -92,23 +96,49 @@ public class AMOPlayerRuntimeFixup : MonoBehaviour
                 if (cachedIsMine != photonView.IsMine)
                 {
                         cachedIsMine = photonView.IsMine;
+                        ApplyState(true);
                 }
 
-                ApplyState();
+                if (!photonView.IsMine)
+                {
+                        ClampRemoteSmoothingTargets();
+                }
         }
 
-        private void ApplyState()
+        private void ApplyState(bool force)
         {
                 if (playerControllerComponent == null)
                         return;
 
-                if (playerControllerComponent is MonoBehaviour behaviour && !behaviour.enabled)
+                bool isMine = photonView != null && photonView.IsMine;
+
+                if (playerControllerComponent is MonoBehaviour behaviour && behaviour.enabled != isMine)
                 {
-                        behaviour.enabled = true;
+                        behaviour.enabled = isMine;
                 }
 
-                bool isMine = photonView != null && photonView.IsMine;
                 isLocalPlayerField?.SetValue(playerControllerComponent, isMine);
+
+                if (force || !isMine)
+                {
+                        ClampRemoteSmoothingTargets();
+                }
+        }
+
+        private void ClampRemoteSmoothingTargets()
+        {
+                if (playerControllerComponent == null)
+                        return;
+
+                if (networkPositionField != null)
+                {
+                        networkPositionField.SetValue(playerControllerComponent, transform.position);
+                }
+
+                if (networkRotationField != null)
+                {
+                        networkRotationField.SetValue(playerControllerComponent, transform.rotation);
+                }
         }
 }
 #else
