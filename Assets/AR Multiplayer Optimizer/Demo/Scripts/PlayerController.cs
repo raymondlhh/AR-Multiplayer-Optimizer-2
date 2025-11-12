@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
@@ -20,11 +18,16 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     private Vector3 networkPosition;
     private Quaternion networkRotation;
     private bool isLocalPlayer;
-    
+    private Transform anchorRoot;
+    private bool networkStateUsesAnchorSpace;
+
     void Start()
     {
         isLocalPlayer = photonView.IsMine;
-        
+
+        FindAnchorRoot();
+        InitializeNetworkStateDefaults();
+
         if (isLocalPlayer)
         {
             // Set up local player
@@ -43,13 +46,32 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             playerName = "Player " + photonView.Owner.ActorNumber;
             SetPlayerColor();
         }
-        
+
         // Set player name
         gameObject.name = playerName;
+
+        if (anchorRoot != null)
+        {
+            EnsureParentedToAnchor();
+        }
     }
-    
+
     void Update()
     {
+        if (anchorRoot == null)
+        {
+            FindAnchorRoot();
+            if (anchorRoot != null)
+            {
+                EnsureParentedToAnchor();
+
+                if (!isLocalPlayer && networkStateUsesAnchorSpace)
+                {
+                    ApplyNetworkStateImmediate();
+                }
+            }
+        }
+
         if (isLocalPlayer)
         {
             HandleInput();
@@ -57,13 +79,23 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         else
         {
             // Smooth interpolation for remote players
-            transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
-            transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+            if (anchorRoot != null && networkStateUsesAnchorSpace)
+            {
+                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * 10f);
+                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * 10f);
+            }
+            else
+            {
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
+                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+            }
         }
     }
-    
+
     void HandleInput()
     {
+        EnsureParentedToAnchor();
+
         // Movement input from joystick
         if (movementJoystick != null)
         {
@@ -156,20 +188,27 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             }
         }
     }
-    
+
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
     {
         if (stream.IsWriting)
         {
-            // We own this player: send the others our data
-            stream.SendNext(transform.position);
-            stream.SendNext(transform.rotation);
+            bool usingAnchorSpace = anchorRoot != null;
+            Vector3 positionToSend = usingAnchorSpace ? transform.localPosition : transform.position;
+            Quaternion rotationToSend = usingAnchorSpace ? transform.localRotation : transform.rotation;
+
+            stream.SendNext(usingAnchorSpace);
+            stream.SendNext(positionToSend);
+            stream.SendNext(rotationToSend);
         }
         else
         {
             // Network player, receive data
+            networkStateUsesAnchorSpace = (bool)stream.ReceiveNext();
             networkPosition = (Vector3)stream.ReceiveNext();
             networkRotation = (Quaternion)stream.ReceiveNext();
+
+            ApplyNetworkStateImmediate();
         }
     }
     
@@ -189,5 +228,74 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         Debug.Log("Player " + otherPlayer.NickName + " left the room");
+    }
+
+    private void InitializeNetworkStateDefaults()
+    {
+        if (anchorRoot != null)
+        {
+            networkPosition = transform.localPosition;
+            networkRotation = transform.localRotation;
+            networkStateUsesAnchorSpace = true;
+        }
+        else
+        {
+            networkPosition = transform.position;
+            networkRotation = transform.rotation;
+            networkStateUsesAnchorSpace = false;
+        }
+    }
+
+    private void FindAnchorRoot()
+    {
+        if (anchorRoot != null)
+            return;
+
+        if (AMOSessionManager.Instance != null && AMOSessionManager.Instance.AnchorRoot != null)
+        {
+            anchorRoot = AMOSessionManager.Instance.AnchorRoot;
+        }
+        else
+        {
+            GameObject anchorObject = GameObject.Find("AnchorRoot");
+            if (anchorObject != null)
+            {
+                anchorRoot = anchorObject.transform;
+            }
+        }
+
+        if (anchorRoot != null && isLocalPlayer)
+        {
+            networkStateUsesAnchorSpace = true;
+        }
+    }
+
+    private void EnsureParentedToAnchor()
+    {
+        if (anchorRoot == null)
+            return;
+
+        if (transform.parent != anchorRoot)
+        {
+            transform.SetParent(anchorRoot, true);
+        }
+    }
+
+    private void ApplyNetworkStateImmediate()
+    {
+        if (isLocalPlayer)
+            return;
+
+        if (networkStateUsesAnchorSpace && anchorRoot != null)
+        {
+            EnsureParentedToAnchor();
+            transform.localPosition = networkPosition;
+            transform.localRotation = networkRotation;
+        }
+        else if (!networkStateUsesAnchorSpace)
+        {
+            transform.position = networkPosition;
+            transform.rotation = networkRotation;
+        }
     }
 }
