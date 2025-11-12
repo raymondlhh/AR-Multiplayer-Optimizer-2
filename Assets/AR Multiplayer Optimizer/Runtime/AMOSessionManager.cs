@@ -25,6 +25,8 @@ public class AMOSessionManager : MonoBehaviour, IPunObservable
 	[SerializeField]
 	private Transform anchorRoot;
 
+	public Transform AnchorRoot => anchorRoot;
+
 	[SerializeField]
 	private AMOAnchorTracker anchorTracker;
 
