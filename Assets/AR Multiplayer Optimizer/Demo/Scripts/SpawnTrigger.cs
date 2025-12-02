@@ -61,10 +61,10 @@ public class SpawnTrigger : MonoBehaviour
         }
         
         // Check if player already exists inside SpawnPoint
-        if (spawnPoint.HasPlayerInside())
+        if (spawnPoint.HasPlayerInside(localOnly: true))
         {
             if (showDebugLogs)
-                Debug.Log("SpawnTrigger: Player already exists in SpawnPoint, skipping spawn");
+                Debug.Log("SpawnTrigger: Local player already exists in SpawnPoint, skipping spawn");
             return;
         }
         
