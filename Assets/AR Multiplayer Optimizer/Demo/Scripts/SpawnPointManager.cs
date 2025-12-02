@@ -100,10 +100,14 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
             {
                 // Set as local player spawn point
                 spawnPoints[spawnIndex].SetAsLocalPlayerSpawnPoint(true);
-                
+
                 // Activate the spawn point (this will trigger OnEnable and spawn the player)
                 spawnPoints[spawnIndex].gameObject.SetActive(true);
-                
+
+                // Ensure the player is spawned immediately for the local player
+                // (the SpawnTrigger may have already run before this spawn point was activated)
+                spawnPoints[spawnIndex].SpawnPlayerFromTrigger();
+
                 // Store the assignment
                 playerSpawnPoints[PhotonNetwork.LocalPlayer.ActorNumber] = spawnPoints[spawnIndex];
                 
