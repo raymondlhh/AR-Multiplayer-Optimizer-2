@@ -10,13 +10,13 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private SpawnPoint[] spawnPoints;
     [SerializeField] private bool autoAssignSpawnPoints = true;
-    
+
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
-    
+
     private int currentPlayerCount = 0;
     private Dictionary<int, SpawnPoint> playerSpawnPoints = new Dictionary<int, SpawnPoint>();
-    
+
     void Start()
     {
         // Find all spawn points if not assigned
@@ -24,19 +24,19 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
         {
             FindAllSpawnPoints();
         }
-        
+
         // Initialize spawn points
         InitializeSpawnPoints();
     }
-    
+
     private void FindAllSpawnPoints()
     {
         spawnPoints = FindObjectsOfType<SpawnPoint>();
-        
+
         if (showDebugLogs)
             Debug.Log("Found " + spawnPoints.Length + " spawn points");
     }
-    
+
     private void InitializeSpawnPoints()
     {
         if (spawnPoints != null)
@@ -47,41 +47,41 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
                 {
                     // Set player prefab
                     spawnPoints[i].SetPlayerPrefab(playerPrefab);
-                    
+
                     // Initially disable all spawn points
                     spawnPoints[i].gameObject.SetActive(false);
-                    
+
                     if (showDebugLogs)
                         Debug.Log("Initialized spawn point " + i + ": " + spawnPoints[i].name);
                 }
             }
         }
     }
-    
+
     public override void OnJoinedRoom()
     {
         if (showDebugLogs)
             Debug.Log("Player joined room. Current player count: " + PhotonNetwork.CurrentRoom.PlayerCount);
-            
+
         // Assign spawn point to current player
         AssignSpawnPointToPlayer();
     }
-    
+
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
         if (showDebugLogs)
             Debug.Log("Player " + newPlayer.NickName + " entered room. New player count: " + PhotonNetwork.CurrentRoom.PlayerCount);
     }
-    
+
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         if (showDebugLogs)
             Debug.Log("Player " + otherPlayer.NickName + " left room. New player count: " + PhotonNetwork.CurrentRoom.PlayerCount);
-            
+
         // Clean up spawn point for the player who left
         CleanupSpawnPointForPlayer(otherPlayer.ActorNumber);
     }
-    
+
     private void AssignSpawnPointToPlayer()
     {
         if (!PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
@@ -90,10 +90,17 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
                 Debug.LogWarning("Not connected to room, cannot assign spawn point");
             return;
         }
-        
-        int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
-        int spawnIndex = playerCount - 1; // 0-based index
-        
+
+        if (playerSpawnPoints.ContainsKey(PhotonNetwork.LocalPlayer.ActorNumber))
+        {
+            if (showDebugLogs)
+                Debug.Log("Spawn point already assigned for player " + PhotonNetwork.LocalPlayer.ActorNumber);
+
+            return;
+        }
+
+        int spawnIndex = GetDeterministicSpawnIndex();
+
         if (spawnPoints != null && spawnIndex < spawnPoints.Length)
         {
             if (spawnPoints[spawnIndex] != null)
@@ -110,7 +117,7 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
 
                 // Store the assignment
                 playerSpawnPoints[PhotonNetwork.LocalPlayer.ActorNumber] = spawnPoints[spawnIndex];
-                
+
                 if (showDebugLogs)
                     Debug.Log("Assigned spawn point " + spawnIndex + " to player " + PhotonNetwork.LocalPlayer.ActorNumber);
             }
@@ -123,10 +130,10 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
         else
         {
             if (showDebugLogs)
-                Debug.LogError("No spawn points available for player " + playerCount);
+                Debug.LogError("No spawn points available for player " + PhotonNetwork.LocalPlayer.ActorNumber);
         }
     }
-    
+
     private void CleanupSpawnPointForPlayer(int playerActorNumber)
     {
         if (playerSpawnPoints.ContainsKey(playerActorNumber))
@@ -137,20 +144,20 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
                 spawnPoint.gameObject.SetActive(false);
                 spawnPoint.ResetSpawnState();
             }
-            
+
             playerSpawnPoints.Remove(playerActorNumber);
-            
+
             if (showDebugLogs)
                 Debug.Log("Cleaned up spawn point for player " + playerActorNumber);
         }
     }
-    
+
     // Public method to manually assign spawn point to current player
     public void AssignSpawnPointToCurrentPlayer()
     {
         AssignSpawnPointToPlayer();
     }
-    
+
     // Public method to get spawn point for a specific player
     public SpawnPoint GetSpawnPointForPlayer(int playerActorNumber)
     {
@@ -160,18 +167,18 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
         }
         return null;
     }
-    
+
     // Public method to get all spawn points
     public SpawnPoint[] GetAllSpawnPoints()
     {
         return spawnPoints;
     }
-    
+
     // Public method to set player prefab
     public void SetPlayerPrefab(GameObject prefab)
     {
         playerPrefab = prefab;
-        
+
         // Update all spawn points
         if (spawnPoints != null)
         {
@@ -183,8 +190,35 @@ public class SpawnPointManager : MonoBehaviourPunCallbacks
                 }
             }
         }
-        
+
         if (showDebugLogs)
             Debug.Log("Player prefab set to " + (prefab != null ? prefab.name : "null"));
+    }
+
+    private int GetDeterministicSpawnIndex()
+    {
+        if (spawnPoints == null || spawnPoints.Length == 0)
+        {
+            if (showDebugLogs)
+                Debug.LogWarning("No spawn points configured; defaulting spawn index to 0");
+
+            return 0;
+        }
+
+        Player[] sortedPlayers = PhotonNetwork.PlayerList.Clone() as Player[];
+        System.Array.Sort(sortedPlayers, (a, b) => a.ActorNumber.CompareTo(b.ActorNumber));
+
+        for (int i = 0; i < sortedPlayers.Length; i++)
+        {
+            if (sortedPlayers[i].ActorNumber == PhotonNetwork.LocalPlayer.ActorNumber)
+            {
+                return i % spawnPoints.Length;
+            }
+        }
+
+        if (showDebugLogs)
+            Debug.LogWarning("Could not determine spawn index from sorted players; defaulting to 0");
+
+        return 0;
     }
 }
