@@ -10,7 +10,6 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [SerializeField] private float remoteBaseLerpSpeed = 18f;
     [SerializeField] private float remoteCatchupDistanceMultiplier = 6f;
     [SerializeField] private float remoteRotationLerpSpeed = 12f;
-    [SerializeField] private float remoteMaxExtrapolationTime = 0.35f;
     
     [Header("Joystick Controls")]
     [SerializeField] private Joystick movementJoystick;
@@ -27,7 +26,6 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     private bool networkStateUsesAnchorSpace;
     private Vector3 lastSentPosition;
     private double lastSentTime;
-    private double lastNetworkReceiveTime;
 
     void Start()
     {
@@ -86,32 +84,17 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         }
         else
         {
-            // Smooth interpolation for remote players with lag compensation and catch-up to avoid trailing
-            float targetSpeed = Mathf.Max(networkVelocity.magnitude, moveSpeed);
-            float positionLerpFactor = Time.deltaTime * (remoteBaseLerpSpeed + targetSpeed);
-            float rotationLerpFactor = Time.deltaTime * remoteRotationLerpSpeed;
-
-            float timeSinceLastState = (float)(PhotonNetwork.Time - lastNetworkReceiveTime);
-            float extrapolationTime = Mathf.Min(timeSinceLastState, remoteMaxExtrapolationTime);
-            Vector3 predictedPosition = networkPosition + networkVelocity * extrapolationTime;
-
+            // Smooth interpolation for remote players with lag compensation
+            float lerpSpeed = 15f;
             if (anchorRoot != null && networkStateUsesAnchorSpace)
             {
-                float distance = Vector3.Distance(transform.localPosition, predictedPosition);
-                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
-                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
-
-                transform.localPosition = Vector3.Lerp(transform.localPosition, predictedPosition, lerpWithCatchup);
-                transform.localRotation = Quaternion.Slerp(transform.localRotation, networkRotation, rotationLerpFactor);
+                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
             else
             {
-                float distance = Vector3.Distance(transform.position, predictedPosition);
-                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
-                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
-
-                transform.position = Vector3.Lerp(transform.position, predictedPosition, lerpWithCatchup);
-                transform.rotation = Quaternion.Slerp(transform.rotation, networkRotation, rotationLerpFactor);
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
         }
     }
