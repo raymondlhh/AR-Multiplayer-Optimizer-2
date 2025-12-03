@@ -7,6 +7,9 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float rotationSpeed = 100f;
+    [SerializeField] private float remoteBaseLerpSpeed = 18f;
+    [SerializeField] private float remoteCatchupDistanceMultiplier = 6f;
+    [SerializeField] private float remoteRotationLerpSpeed = 12f;
     
     [Header("Joystick Controls")]
     [SerializeField] private Joystick movementJoystick;
@@ -16,10 +19,13 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [SerializeField] private Color playerColor = Color.white;
     
     private Vector3 networkPosition;
+    private Vector3 networkVelocity;
     private Quaternion networkRotation;
     private bool isLocalPlayer;
     private Transform anchorRoot;
     private bool networkStateUsesAnchorSpace;
+    private Vector3 lastSentPosition;
+    private double lastSentTime;
 
     void Start()
     {
@@ -78,16 +84,28 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         }
         else
         {
-            // Smooth interpolation for remote players
+            // Smooth interpolation for remote players with lag compensation and catch-up to avoid trailing
+            float targetSpeed = Mathf.Max(networkVelocity.magnitude, moveSpeed);
+            float positionLerpFactor = Time.deltaTime * (remoteBaseLerpSpeed + targetSpeed);
+            float rotationLerpFactor = Time.deltaTime * remoteRotationLerpSpeed;
+
             if (anchorRoot != null && networkStateUsesAnchorSpace)
             {
-                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * 10f);
-                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * 10f);
+                float distance = Vector3.Distance(transform.localPosition, networkPosition);
+                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
+                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
+
+                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, lerpWithCatchup);
+                transform.localRotation = Quaternion.Slerp(transform.localRotation, networkRotation, rotationLerpFactor);
             }
             else
             {
-                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
-                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+                float distance = Vector3.Distance(transform.position, networkPosition);
+                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
+                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
+
+                transform.position = Vector3.Lerp(transform.position, networkPosition, lerpWithCatchup);
+                transform.rotation = Quaternion.Slerp(transform.rotation, networkRotation, rotationLerpFactor);
             }
         }
     }
@@ -196,10 +214,25 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             bool usingAnchorSpace = anchorRoot != null;
             Vector3 positionToSend = usingAnchorSpace ? transform.localPosition : transform.position;
             Quaternion rotationToSend = usingAnchorSpace ? transform.localRotation : transform.rotation;
+            Vector3 velocityToSend = Vector3.zero;
+
+            double now = PhotonNetwork.Time;
+            if (lastSentTime > 0)
+            {
+                double delta = now - lastSentTime;
+                if (delta > double.Epsilon)
+                {
+                    velocityToSend = (positionToSend - lastSentPosition) / (float)delta;
+                }
+            }
 
             stream.SendNext(usingAnchorSpace);
             stream.SendNext(positionToSend);
             stream.SendNext(rotationToSend);
+            stream.SendNext(velocityToSend);
+
+            lastSentPosition = positionToSend;
+            lastSentTime = now;
         }
         else
         {
@@ -207,6 +240,10 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             networkStateUsesAnchorSpace = (bool)stream.ReceiveNext();
             networkPosition = (Vector3)stream.ReceiveNext();
             networkRotation = (Quaternion)stream.ReceiveNext();
+            networkVelocity = (Vector3)stream.ReceiveNext();
+
+            float lagSeconds = Mathf.Abs((float)(PhotonNetwork.Time - info.SentServerTime));
+            networkPosition += networkVelocity * lagSeconds;
 
             ApplyNetworkStateImmediate();
         }
