@@ -84,28 +84,17 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         }
         else
         {
-            // Smooth interpolation for remote players with lag compensation and catch-up to avoid trailing
-            float targetSpeed = Mathf.Max(networkVelocity.magnitude, moveSpeed);
-            float positionLerpFactor = Time.deltaTime * (remoteBaseLerpSpeed + targetSpeed);
-            float rotationLerpFactor = Time.deltaTime * remoteRotationLerpSpeed;
-
+            // Smooth interpolation for remote players with lag compensation
+            float lerpSpeed = 15f;
             if (anchorRoot != null && networkStateUsesAnchorSpace)
             {
-                float distance = Vector3.Distance(transform.localPosition, networkPosition);
-                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
-                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
-
-                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, lerpWithCatchup);
-                transform.localRotation = Quaternion.Slerp(transform.localRotation, networkRotation, rotationLerpFactor);
+                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
             else
             {
-                float distance = Vector3.Distance(transform.position, networkPosition);
-                float catchupFactor = Mathf.Clamp01(distance * remoteCatchupDistanceMultiplier);
-                float lerpWithCatchup = Mathf.Clamp01(positionLerpFactor + catchupFactor);
-
-                transform.position = Vector3.Lerp(transform.position, networkPosition, lerpWithCatchup);
-                transform.rotation = Quaternion.Slerp(transform.rotation, networkRotation, rotationLerpFactor);
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
         }
     }
