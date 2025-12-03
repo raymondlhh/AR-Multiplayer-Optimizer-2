@@ -7,6 +7,9 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float rotationSpeed = 100f;
+    [SerializeField] private float remoteBaseLerpSpeed = 18f;
+    [SerializeField] private float remoteCatchupDistanceMultiplier = 6f;
+    [SerializeField] private float remoteRotationLerpSpeed = 12f;
     
     [Header("Joystick Controls")]
     [SerializeField] private Joystick movementJoystick;
