@@ -16,10 +16,13 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     [SerializeField] private Color playerColor = Color.white;
     
     private Vector3 networkPosition;
+    private Vector3 networkVelocity;
     private Quaternion networkRotation;
     private bool isLocalPlayer;
     private Transform anchorRoot;
     private bool networkStateUsesAnchorSpace;
+    private Vector3 lastSentPosition;
+    private double lastSentTime;
 
     void Start()
     {
@@ -78,16 +81,17 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         }
         else
         {
-            // Smooth interpolation for remote players
+            // Smooth interpolation for remote players with lag compensation
+            float lerpSpeed = 15f;
             if (anchorRoot != null && networkStateUsesAnchorSpace)
             {
-                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * 10f);
-                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * 10f);
+                transform.localPosition = Vector3.Lerp(transform.localPosition, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.localRotation = Quaternion.Lerp(transform.localRotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
             else
             {
-                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * 10f);
-                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * 10f);
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * lerpSpeed);
+                transform.rotation = Quaternion.Lerp(transform.rotation, networkRotation, Time.deltaTime * lerpSpeed);
             }
         }
     }
@@ -196,10 +200,25 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             bool usingAnchorSpace = anchorRoot != null;
             Vector3 positionToSend = usingAnchorSpace ? transform.localPosition : transform.position;
             Quaternion rotationToSend = usingAnchorSpace ? transform.localRotation : transform.rotation;
+            Vector3 velocityToSend = Vector3.zero;
+
+            double now = PhotonNetwork.Time;
+            if (lastSentTime > 0)
+            {
+                double delta = now - lastSentTime;
+                if (delta > double.Epsilon)
+                {
+                    velocityToSend = (positionToSend - lastSentPosition) / (float)delta;
+                }
+            }
 
             stream.SendNext(usingAnchorSpace);
             stream.SendNext(positionToSend);
             stream.SendNext(rotationToSend);
+            stream.SendNext(velocityToSend);
+
+            lastSentPosition = positionToSend;
+            lastSentTime = now;
         }
         else
         {
@@ -207,6 +226,10 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             networkStateUsesAnchorSpace = (bool)stream.ReceiveNext();
             networkPosition = (Vector3)stream.ReceiveNext();
             networkRotation = (Quaternion)stream.ReceiveNext();
+            networkVelocity = (Vector3)stream.ReceiveNext();
+
+            float lagSeconds = Mathf.Abs((float)(PhotonNetwork.Time - info.SentServerTime));
+            networkPosition += networkVelocity * lagSeconds;
 
             ApplyNetworkStateImmediate();
         }

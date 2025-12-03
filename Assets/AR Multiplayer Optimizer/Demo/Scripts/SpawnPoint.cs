@@ -323,27 +323,43 @@ public class SpawnPoint : MonoBehaviour
     }
     
     // Public method to check if player exists inside (as child)
-    public bool HasPlayerInside()
+    public bool HasPlayerInside(bool localOnly = false)
     {
         // Check if player exists as child
         Transform existingPlayer = transform.Find("Player");
-        
+        PhotonView existingView = existingPlayer != null ? existingPlayer.GetComponent<PhotonView>() : null;
+
         if (existingPlayer != null)
         {
-            if (showDebugLogs)
-                Debug.Log("Player exists inside " + gameObject.name);
-            return true;
+            bool isLocalMatch = !localOnly || existingView == null || existingView.IsMine || existingView.OwnerActorNr == PhotonNetwork.LocalPlayer.ActorNumber;
+
+            if (isLocalMatch)
+            {
+                if (showDebugLogs)
+                    Debug.Log("Player exists inside " + gameObject.name + (localOnly ? " (local)" : ""));
+                return true;
+            }
         }
-        
+
         // Also check for any child with PhotonView component (networked player)
         PhotonView[] photonViews = GetComponentsInChildren<PhotonView>();
-        if (photonViews.Length > 0)
+        foreach (PhotonView view in photonViews)
         {
-            if (showDebugLogs)
-                Debug.Log("Networked player found inside " + gameObject.name);
-            return true;
+            if (view == null)
+            {
+                continue;
+            }
+
+            bool isLocalView = view.IsMine || view.OwnerActorNr == PhotonNetwork.LocalPlayer.ActorNumber;
+
+            if (!localOnly || isLocalView)
+            {
+                if (showDebugLogs)
+                    Debug.Log("Networked player found inside " + gameObject.name + (localOnly ? " (local)" : ""));
+                return true;
+            }
         }
-        
+
         return false;
     }
     
@@ -354,10 +370,10 @@ public class SpawnPoint : MonoBehaviour
             Debug.Log("SpawnPlayerFromTrigger called on " + gameObject.name);
         
         // Check if player already exists inside
-        if (HasPlayerInside())
+        if (HasPlayerInside(localOnly: true))
         {
             if (showDebugLogs)
-                Debug.Log("Player already exists inside " + gameObject.name + ", skipping spawn");
+                Debug.Log("Local player already exists inside " + gameObject.name + ", skipping spawn");
             return;
         }
         
