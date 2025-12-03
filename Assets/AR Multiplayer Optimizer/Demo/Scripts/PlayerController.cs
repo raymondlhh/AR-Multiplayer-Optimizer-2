@@ -234,6 +234,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             float lagSeconds = Mathf.Abs((float)(PhotonNetwork.Time - info.SentServerTime));
             networkPosition += networkVelocity * lagSeconds;
 
+            lastNetworkReceiveTime = PhotonNetwork.Time;
             ApplyNetworkStateImmediate();
         }
     }
@@ -263,12 +264,14 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
             networkPosition = transform.localPosition;
             networkRotation = transform.localRotation;
             networkStateUsesAnchorSpace = true;
+            lastNetworkReceiveTime = PhotonNetwork.Time;
         }
         else
         {
             networkPosition = transform.position;
             networkRotation = transform.rotation;
             networkStateUsesAnchorSpace = false;
+            lastNetworkReceiveTime = PhotonNetwork.Time;
         }
     }
 
