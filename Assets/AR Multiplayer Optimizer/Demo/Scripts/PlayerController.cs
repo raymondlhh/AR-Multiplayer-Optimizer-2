@@ -26,6 +26,7 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
     private bool networkStateUsesAnchorSpace;
     private Vector3 lastSentPosition;
     private double lastSentTime;
+    private double lastNetworkSampleTime;
 
     void Start()
     {
