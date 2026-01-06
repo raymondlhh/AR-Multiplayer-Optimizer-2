@@ -162,6 +162,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 5
   rotationSpeed: 100
+  remoteBaseLerpSpeed: 18
+  remoteCatchupDistanceMultiplier: 6
+  remoteRotationLerpSpeed: 12
   movementJoystick: {fileID: 0}
   playerName: Player
   playerColor: {r: 1, g: 1, b: 1, a: 1}
